@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>any-i18n</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <script src="browser-shim.js"></script>
+
+  <div class="container">
+    <header>
+      <div class="brand">
+        <div class="logo">
+          <img src="../icons/icon-48.png" width="22" height="22" alt="any-i18n">
+        </div>
+        <div class="brand-text">
+          <h1>any-i18n</h1>
+          <p class="domain" id="domain">--</p>
+        </div>
+      </div>
+      <div class="key-badge" title="Scanned keys">
+        <span class="key-badge-icon">
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M4 1h8a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V2a1 1 0 011-1zm1 3v1h6V4H5zm0 3v1h6V7H5zm0 3v1h4v-1H5z"/></svg>
+        </span>
+        <span id="key-count">0</span>
+      </div>
+    </header>
+
+    <div class="divider"></div>
+
+    <section class="section lang-section">
+      <label for="language-input">Target Language</label>
+      <div class="lang-row">
+        <div class="select-wrap lang-input-wrap">
+          <input type="text" id="language-input" list="language-options" placeholder="e.g. de, fr, es..." autocomplete="off">
+          <datalist id="language-options"></datalist>
+        </div>
+        <button id="translate-btn" class="btn btn-accent btn-translate" disabled>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6M5 1v2M3.5 3c0 2.5 3 4.5 5.5 6M8 7l3 4M11 7l-3 4"/></svg>
+          <span class="translate-label">Translate</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="section actions-grid">
+      <button id="scan-btn" class="btn btn-primary">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="7" cy="7" r="5"/><line x1="10.5" y1="10.5" x2="14" y2="14"/></svg>
+        <span class="scan-label">Scan Page</span>
+      </button>
+      <button id="apply-btn" class="btn btn-success" disabled>
+        <svg class="icon-apply" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 8 6 12 14 4"/></svg>
+        <svg class="icon-revert" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6h9a3 3 0 010 6H8"/><polyline points="5 3 2 6 5 9"/></svg>
+        <span class="apply-label">Apply</span>
+      </button>
+    </section>
+
+    <section class="section io-grid">
+      <button id="export-btn" class="btn btn-ghost" disabled>
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M4 6l4-4 4 4M2 12h12v2H2z"/></svg>
+        Export Keys
+      </button>
+      <label class="btn btn-ghost import-label" id="import-label">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10V2M4 6l4 4 4-4M2 12h12v2H2z"/></svg>
+        Import
+        <input type="file" id="import-input" accept=".json" hidden>
+      </label>
+    </section>
+
+    <div class="divider"></div>
+
+    <section class="section keys-viewer" id="keys-list">
+      <button class="keys-toggle" id="keys-toggle" aria-expanded="false">
+        <svg class="keys-chevron" width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l4 4-4 4z"/></svg>
+        <span>Scanned Keys</span>
+        <span class="keys-badge" id="keys-count-label">0</span>
+      </button>
+      <div class="keys-body" id="keys-body">
+        <div class="keys-empty">No keys scanned yet.</div>
+      </div>
+    </section>
+
+    <div id="status" class="status hidden"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

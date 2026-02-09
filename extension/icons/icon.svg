@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1db89a"/>
+      <stop offset="100%" stop-color="#0e7c6b"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+
+  <!-- Globe -->
+  <g fill="none" stroke="#fff" stroke-linecap="round">
+    <circle cx="50" cy="58" r="30" stroke-width="3.2" opacity=".92"/>
+    <ellipse cx="50" cy="58" rx="12" ry="30" stroke-width="2.4" opacity=".6"/>
+    <line x1="20" y1="58" x2="80" y2="58" stroke-width="2.2" opacity=".5"/>
+    <path d="M25 43 Q50 40 75 43" stroke-width="1.8" opacity=".35"/>
+    <path d="M25 73 Q50 76 75 73" stroke-width="1.8" opacity=".35"/>
+  </g>
+
+  <!-- Arrow: globe → text -->
+  <g stroke="#fff" stroke-width="2.5" stroke-linecap="round" opacity=".7">
+    <line x1="82" y1="44" x2="96" y2="44"/>
+    <polyline points="92,39 97,44 92,49" fill="none"/>
+  </g>
+
+  <!-- "A" top-right -->
+  <text x="105" y="48" font-family="system-ui,-apple-system,sans-serif" font-size="28" font-weight="800" fill="#fff" text-anchor="middle" opacity=".95">A</text>
+
+  <!-- Chinese character bottom-right -->
+  <text x="100" y="84" font-family="system-ui,-apple-system,sans-serif" font-size="26" font-weight="600" fill="#fff" text-anchor="middle" opacity=".55">&#25991;</text>
+
+  <!-- Label -->
+  <text x="64" y="116" font-family="system-ui,-apple-system,sans-serif" font-size="16" font-weight="700" fill="#fff" text-anchor="middle" letter-spacing="0.5" opacity=".75">any-i18n</text>
+</svg>

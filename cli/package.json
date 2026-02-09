@@ -1,0 +1,28 @@
+{
+  "name": "any-i18n-cli",
+  "version": "1.0.0",
+  "description": "CLI tool for any-i18n translation management",
+  "license": "MIT",
+  "author": "rennerdo30",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rennerdo30/any-i18n.git",
+    "directory": "cli"
+  },
+  "keywords": [
+    "i18n",
+    "translation",
+    "cli",
+    "internationalization"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "any-i18n": "./bin/any-i18n.js"
+  },
+  "dependencies": {
+    "commander": "^12.0.0"
+  },
+  "type": "module"
+}

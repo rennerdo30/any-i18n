@@ -1,0 +1,30 @@
+{
+  "name": "any-i18n",
+  "version": "1.0.0",
+  "description": "Add multilanguage i18n support to any website",
+  "license": "MIT",
+  "author": "rennerdo30",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rennerdo30/any-i18n.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rennerdo30/any-i18n/issues"
+  },
+  "homepage": "https://github.com/rennerdo30/any-i18n#readme",
+  "keywords": [
+    "i18n",
+    "internationalization",
+    "translation",
+    "browser-extension",
+    "webextension",
+    "manifest-v3",
+    "localization"
+  ],
+  "scripts": {
+    "build": "node scripts/build.js",
+    "build:chrome": "node scripts/build.js --browser chrome",
+    "build:firefox": "node scripts/build.js --browser firefox"
+  },
+  "type": "module"
+}
