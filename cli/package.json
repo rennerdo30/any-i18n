@@ -16,7 +16,7 @@
     "internationalization"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=22.12.0"
   },
   "bin": {
     "any-i18n": "./bin/any-i18n.js"

@@ -68,7 +68,7 @@ every later visit, and the whole translation set is a plain JSON file you own.
 | --- | --- | --- |
 | Browser extension | `extension/` | Manifest V3, plain JS, no bundler. Scans, applies, and reverts translations; popup and in-page toolbar UI. |
 | Translation server | `server/` | FastAPI + SQLite. `POST /api/translate` and a streaming `POST /api/translate/stream`, plus health, stats, and language endpoints. |
-| CLI | `cli/` | Node 18+ ESM tool built on `commander` for translating, validating, and bundling translation JSON. |
+| CLI | `cli/` | Node 22.12+ ESM tool built on `commander` for translating, validating, and bundling translation JSON. |
 
 ## How a page gets translated
 
