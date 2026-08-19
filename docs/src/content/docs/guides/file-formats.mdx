@@ -1,0 +1,130 @@
+---
+title: File Formats
+description: The key export, translation, and bundled manifest JSON formats, plus the key algorithm.
+---
+
+Every artefact any-i18n produces is plain JSON. There is no binary format and no database you have to
+own — the SQLite file on the server is only a cache.
+
+## Key export (`_keys.json`)
+
+Produced by **Export Keys** in the popup, consumed by `any-i18n translate` and
+`any-i18n validate --keys`.
+
+```json
+{
+  "_meta": {
+    "domain": "example.com",
+    "exportedAt": "2026-01-15T10:30:00.000Z",
+    "keyCount": 2
+  },
+  "keys": {
+    "welcome_to_our_1a2b3c4d": "Welcome to our website",
+    "click_here_to_5e6f7a8b": "Click here to learn more"
+  }
+}
+```
+
+## Translation file (`<lang>.json`)
+
+Produced by `any-i18n translate`, consumed by the popup's **Import** button and by
+`any-i18n bundle`.
+
+```json
+{
+  "_meta": {
+    "domain": "example.com",
+    "language": "de",
+    "translatedAt": "2026-01-15T11:00:00.000Z",
+    "sourceVersion": "1.0.0"
+  },
+  "translations": {
+    "welcome_to_our_1a2b3c4d": "Willkommen auf unserer Website",
+    "click_here_to_5e6f7a8b": "Klicken Sie hier, um mehr zu erfahren"
+  }
+}
+```
+
+Import requires `_meta.domain`, `_meta.language`, and `translations`. `any-i18n validate`
+additionally requires `_meta.translatedAt`.
+
+## Bundled translation manifest
+
+Read by the service worker from `translations/manifest.json` inside the extension package. Each
+listed language must exist at `translations/<domain>/<lang>.json` in the translation file format
+above.
+
+```json
+{
+  "_meta": {
+    "version": "1.0.0",
+    "description": "Translation manifest for any-i18n"
+  },
+  "domains": {
+    "example.com": {
+      "languages": ["de", "fr"],
+      "lastUpdated": "2026-01-15T11:00:00.000Z"
+    }
+  }
+}
+```
+
+Only `domains[*].languages` is actually used for loading; the other fields are informational. Fetch
+failures are silent by design, so a package that ships no translations still installs cleanly.
+
+## CLI bundle index (`_manifest.json`)
+
+Written by `any-i18n bundle` next to the copied files. It is not the manifest the extension reads —
+see the [CLI guide](/any-i18n/guides/cli/).
+
+```json
+{
+  "generatedAt": "2026-01-15T11:05:00.000Z",
+  "translations": [
+    { "file": "de.json", "language": "de", "domain": "example.com" }
+  ]
+}
+```
+
+## Server request and response
+
+```json
+{ "keys": { "<key>": "<source text>" }, "language": "de", "domain": "example.com" }
+```
+
+```json
+{ "translations": { "<key>": "<translated text>" }, "cached": 0, "translated": 1 }
+```
+
+See the [server guide](/any-i18n/guides/server/) for the streaming variant.
+
+## Key algorithm
+
+A key is `prefix + '_' + hash`.
+
+```js
+// prefix: first three words, lowercased, non-alphanumerics removed, joined with "_"
+// (falls back to "txt" when no usable word remains)
+// hash: FNV-1a 32-bit over the whole normalized string, hex
+
+function fnv1aHash(str) {
+  var hash = 0x811c9dc5;              // FNV offset basis
+  for (var i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193); // FNV prime
+  }
+  return (hash >>> 0).toString(16);
+}
+```
+
+The string is normalized first — trimmed, with runs of whitespace collapsed to single spaces — so
+markup indentation does not change the key. Strings shorter than two characters and strings
+consisting only of digits, punctuation, and symbols never get a key.
+
+Two consequences worth knowing:
+
+- **Stability.** The same sentence produces the same key on every page and every run, so a
+  translation you correct once keeps applying.
+- **No context.** Identical text in two different places shares one key and therefore one
+  translation. That is the right trade-off for most pages, but it cannot express two different
+  translations of the same word in different contexts.

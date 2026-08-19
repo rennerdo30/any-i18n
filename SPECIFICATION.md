@@ -1,110 +1,194 @@
 # any-i18n Specification
 
+This document is the implementation reference for the repository. Task-oriented documentation lives
+in the [documentation site](https://rennerdo30.github.io/any-i18n/) (source in `docs/`).
+
 ## Overview
 
-any-i18n is a browser extension that adds multilanguage i18n support to any website. It scans pages for translatable text, exports key collections, integrates with a CLI tool that uses Claude Code to translate, and applies translations at runtime.
+any-i18n adds multilanguage i18n support to any website at runtime. A Manifest V3 browser extension
+scans pages for translatable text and attributes, generates deterministic keys, obtains translations
+(from a local FastAPI server, from the CLI, or by import), and replaces the content in place with
+full revert support.
 
-## Architecture
+## Components
 
-### Browser Extension
-- WebExtensions API + Manifest V3 for cross-browser support (Chrome, Firefox, Edge)
-- Content scripts scan the DOM via TreeWalker, replace text, and observe mutations
-- Background service worker indexes bundled translations into `browser.storage.local`
-- Popup UI provides language selection, key collection management, and import/export
+### Browser extension (`extension/`)
 
-### CLI Tool
-- Node.js CLI tool calls Claude Code CLI to perform translations
-- Supports translating, validating, and bundling translation files
+- WebExtensions API + Manifest V3, targeting Chrome, Edge, and Firefox 109+
+- No bundler: content scripts are plain JS files loaded in order by `manifest.json` and share one
+  global scope, so top-level declarations use `var`
+- Browser shim: `if (typeof browser === 'undefined') var browser = chrome;`
+- Content scripts scan the DOM via `TreeWalker`, replace text and attributes, and observe mutations
+- The background service worker calls the translation server, imports translation files, and indexes
+  bundled translations into `browser.storage.local`
+- The popup provides language selection, scan/translate/apply/revert, auto-translate, import/export,
+  and a key viewer
+- A floating in-page toolbar (closed shadow root) offers the same core actions without the popup
 
-### Build System
-- Build script packages the extension for each browser with manifest patching
+Permissions: `storage`, `activeTab`, `scripting`, and `host_permissions` for
+`http://localhost:39418/*`. Content scripts match `<all_urls>` at `document_idle`.
 
-## Project Structure
+Content script load order (from `manifest.json`):
+
+```
+shared/constants.js, shared/utils.js, shared/storage.js,
+content/key-generator.js, content/dom-scanner.js, content/text-replacer.js,
+content/mutation-handler.js, content/content-script.js, content/toolbar.js
+```
+
+### Translation server (`server/`)
+
+- FastAPI application, uvicorn entry point in `run.py`, port `39418` by default
+- SQLite cache keyed by `(source_hash, target_language)`; all statements parameterized
+- Batching: chunks of `BATCH_SIZE` translated by up to `MAX_PARALLEL` threads
+- Backends selected by `LLM_BACKEND`: `claude-cli`, `gemini-cli`, `codex-cli` (subprocess,
+  `<command> -p <prompt>`, 120 s timeout) or `openai-api`, `anthropic-api` (provider SDKs)
+- The streaming endpoint emits SSE events per completed batch, caching each batch before emitting it
+- Run from the repository root (`python -m server.run`) — modules import as `server.*`
+
+### CLI (`cli/`)
+
+- Node 18+ ESM package built on `commander`, exposing the `any-i18n` binary
+- `translate` invokes the local `claude` command with a single prompt
+- `validate` checks structure, empty values, and (optionally) parity with a key export
+- `bundle` copies translation JSON files and writes a `_manifest.json` index
+
+### Build system (`scripts/build.js`)
+
+Clears `dist/`, copies `extension/` to `dist/<browser>/` for `chrome`, `firefox`, and `edge`, and
+patches the Firefox manifest with `browser_specific_settings.gecko`
+(`id: any-i18n@extension`, `strict_min_version: 109.0`).
+
+## Project structure
 
 ```
 any-i18n/
 ├── SPECIFICATION.md
-├── CLAUDE.md
 ├── TODO.md
+├── README.md
 ├── package.json
 ├── extension/
 │   ├── manifest.json
 │   ├── icons/
-│   ├── background/
-│   │   └── service-worker.js
+│   ├── background/service-worker.js
 │   ├── content/
 │   │   ├── dom-scanner.js
 │   │   ├── key-generator.js
 │   │   ├── text-replacer.js
 │   │   ├── mutation-handler.js
-│   │   └── content-script.js
+│   │   ├── content-script.js
+│   │   └── toolbar.js
 │   ├── popup/
 │   │   ├── popup.html
 │   │   ├── popup.js
-│   │   └── popup.css
+│   │   ├── popup.css
+│   │   └── browser-shim.js
 │   ├── shared/
 │   │   ├── constants.js
 │   │   ├── utils.js
 │   │   └── storage.js
-│   └── translations/
-│       └── manifest.json
+│   └── translations/manifest.json
+├── server/
+│   ├── main.py
+│   ├── translator.py
+│   ├── db.py
+│   ├── config.py
+│   ├── run.py
+│   ├── start.sh
+│   └── requirements.txt
 ├── cli/
 │   ├── package.json
-│   ├── bin/
-│   │   └── any-i18n.js
-│   └── src/
-│       └── commands/
-│           ├── translate.js
-│           ├── validate.js
-│           └── bundle.js
-└── scripts/
-    └── build.js
+│   ├── bin/any-i18n.js
+│   └── src/commands/
+│       ├── translate.js
+│       ├── validate.js
+│       └── bundle.js
+├── scripts/build.js
+└── docs/                (Astro Starlight documentation site)
 ```
 
-## Key Generation
+## Key generation
 
-### Algorithm
-- Uses FNV-1a 32-bit hash
-- Format: `prefix_hexhash` where prefix is the first 3 words of the text, lowercased
-- Deterministic: the same text always produces the same key
+- `normalizeText`: trim, collapse internal whitespace runs to single spaces
+- `isTranslatableText`: reject text shorter than `MIN_TEXT_LENGTH` (2) and text matching
+  `^[\d\s\p{P}\p{S}]+$`
+- Prefix: first three words, lowercased, non-alphanumerics stripped, joined with `_`; `txt` if none
+  remain
+- Hash: FNV-1a 32-bit (offset basis `0x811c9dc5`, prime `0x01000193`, `Math.imul`) over the full
+  normalized text, hex encoded
+- Result: `prefix_hexhash` — deterministic across pages and runs
 
-### Example
-- Input: `"Welcome to our website"`
-- Prefix: `welcome_to_our`
-- Hash: FNV-1a 32-bit of the full text
-- Result: `welcome_to_our_a1b2c3d4`
+Example: `"Welcome to our website"` → `welcome_to_our_<hash>`
 
-## DOM Scanning
+## DOM scanning
 
-### Strategy
-- Uses the TreeWalker API with `NodeFilter.SHOW_TEXT` for efficient DOM traversal
-- Walks the entire document body to find all text nodes
+Two `TreeWalker` passes over `document.body`.
 
-### Skip List
-The following elements are skipped during scanning:
-- `SCRIPT`
-- `STYLE`
-- `NOSCRIPT`
-- `IFRAME`
-- `SVG`
-- `META`
-- `LINK`
-- `HEAD`
+**Pass 1 — text nodes** (`NodeFilter.SHOW_TEXT`). Rejected when any ancestor is in `SKIP_TAGS`
+(`SCRIPT`, `STYLE`, `NOSCRIPT`, `IFRAME`, `SVG`, `META`, `LINK`, `HEAD`, `TITLE`) or carries
+`translate="no"`, or when the normalized text is not translatable.
 
-### Text Filtering
-- Minimum text length: 2 characters
-- Ignores text that consists only of numbers and/or punctuation
-- Trims whitespace before evaluation
+**Pass 2 — attributes** (`NodeFilter.SHOW_ELEMENT`):
 
-## Translation File Format
+| Attribute | Elements |
+| --- | --- |
+| `title`, `aria-label` | any element |
+| `placeholder` | `INPUT`, `TEXTAREA` |
+| `alt` | `IMG` |
+| `value` | `INPUT` whose type is in `TRANSLATABLE_INPUT_TYPES` (`submit`, `button`, `reset`) |
 
-### Key Export File (`_keys.json`)
+`contenteditable` elements are skipped in pass 2.
+
+Each collected entry is `{ node, originalText, key }`, plus `attr` for attribute entries.
+
+## Translation application
+
+- Text nodes are written with `textContent`; attributes with `setAttribute`. `innerHTML` and `eval`
+  are never used.
+- Originals are stored in a `Map` (text) and a `Map` of `Map` (attributes); two `WeakMap`s track what
+  is currently applied so repeated passes skip unchanged nodes.
+- Translated elements get a `data-anyi18n` attribute, and a single stylesheet
+  (`#anyi18n-translate-styles`) applies `overflow-wrap`, `word-break`, `white-space: normal`, and
+  `min-width: 0` to those elements to limit layout damage.
+- `revert()` restores every original and removes the markers. `reset()` clears bookkeeping without
+  touching the DOM (used after SPA navigation, when nodes are detached).
+
+## SPA support
+
+- `MutationObserver` on `document.body` for `childList`, `subtree`, and `characterData`, debounced
+  50 ms, with a `_processing` guard so self-inflicted mutations are ignored
+- `history.pushState` and `history.replaceState` are wrapped; `popstate` and `hashchange` are
+  observed
+- On URL change: reset state, wait 200 ms for the new view, then re-apply the previous language for
+  the same host or evaluate the auto-translate configuration
+
+## Long-running translation results
+
+An LLM batch can outlive the extension message port. The service worker answers `{ started: true }`
+immediately and publishes progress by writing `_translateResult` to `browser.storage.local`; popup
+and content script listen on `browser.storage.onChanged`. Streaming batches carry `partial: true` and
+are applied progressively; the final write clears the flag.
+
+## Storage layout
+
+| Key | Shape |
+| --- | --- |
+| `settings` | `{ enabled, autoScan, highlightTranslated }` |
+| `translations` | `{ domain: { language: { key: text } } }` |
+| `domainKeys` | `{ domain: { key: sourceText } }` |
+| `autoTranslate` | `{ domain: { language, enabled } }` |
+| `_translateResult` | `{ success, translations, cached, translated, partial, source, error? }` |
+
+## File formats
+
+### Key export (`_keys.json`)
+
 ```json
 {
   "_meta": {
     "domain": "example.com",
     "exportedAt": "2026-01-15T10:30:00.000Z",
-    "version": "1.0.0"
+    "keyCount": 2
   },
   "keys": {
     "welcome_to_our_a1b2c3d4": "Welcome to our website",
@@ -113,7 +197,8 @@ The following elements are skipped during scanning:
 }
 ```
 
-### Translation File (`{lang}.json`)
+### Translation file (`{lang}.json`)
+
 ```json
 {
   "_meta": {
@@ -129,13 +214,14 @@ The following elements are skipped during scanning:
 }
 ```
 
-### Translation Manifest (`manifest.json`)
+Import requires `_meta.domain`, `_meta.language`, and `translations`. `any-i18n validate` also
+requires `_meta.translatedAt`.
+
+### Bundled translation manifest (`extension/translations/manifest.json`)
+
 ```json
 {
-  "_meta": {
-    "version": "1.0.0",
-    "description": "Translation manifest for any-i18n"
-  },
+  "_meta": { "version": "1.0.0", "description": "Translation manifest for any-i18n" },
   "domains": {
     "example.com": {
       "languages": ["de", "fr"],
@@ -145,77 +231,62 @@ The following elements are skipped during scanning:
 }
 ```
 
-## Translation Application
+Files are loaded from `translations/<domain>/<lang>.json`. Fetch failures are silent, so a package
+without translations installs cleanly.
 
-### Applying Translations
-- When a language is selected and translations are available, the content script walks the DOM
-- For each text node, it generates the key and looks up the translation
-- Original text is stored so it can be reverted
-- Text nodes are replaced with translated content
+## Server API
 
-### Reverting Translations
-- Original text is stored in a map keyed by the generated translation key
-- When reverting, the content script walks the DOM again and restores original text
-- All stored originals are cleared after revert
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/translate` | Translate `{ keys, language, domain? }`; returns `{ translations, cached, translated }` (plus `error` on partial failure) |
+| `POST` | `/api/translate/stream` | Same input; SSE stream with `cached`, `batch`, `error`, `done` events |
+| `GET` | `/api/languages` | `{ languages: [...] }` from the cache |
+| `GET` | `/api/stats` | `{ total, by_language }` |
+| `GET` | `/api/health` | `{ status, backend }` |
 
-## SPA Support
+### Prompt contract
 
-### MutationObserver
-- Watches for `childList`, `subtree`, and `characterData` changes
-- 50ms debounce on the callback to batch rapid DOM changes
-- Automatically translates newly added text nodes when translations are active
-- Handles dynamic content loading, route changes, and AJAX updates
+Each batch is sent as JSON where every entry is `{ "t": <source>, "max": <target length> }`. The
+response must be a JSON object mapping the same keys to translated strings, with HTML tags and
+placeholders preserved and no markdown fences. Responses are fence-stripped before `json.loads`.
 
-## CLI Tool
+Length budgets: `max(len + 8, len * 1.3)` for Latin scripts; `max(len * 6, 20)` when the source
+contains CJK characters (Han, Hiragana, Katakana, Hangul, CJK punctuation).
 
-### Commands
+### Cache schema
 
-#### `any-i18n translate`
-Translates keys using Claude Code CLI.
-```bash
-any-i18n translate --input keys.json --language de
-```
-- Reads the key export file
-- Sends text to Claude Code for translation
-- Outputs a properly formatted translation file
-
-#### `any-i18n validate`
-Validates translation files against source keys.
-```bash
-any-i18n validate --input de.json --keys keys.json
-```
-- Checks all keys are present in the translation
-- Checks for orphaned translations (keys not in source)
-- Reports missing and extra keys
-
-#### `any-i18n bundle`
-Bundles translations for the extension.
-```bash
-any-i18n bundle --input ./translations --output ./extension/translations
-```
-- Copies and organizes translation files
-- Updates the translation manifest
-- Prepares files for extension packaging
-
-## Build Process
-
-### Building
-```bash
-node scripts/build.js                    # Build for all browsers
-node scripts/build.js --browser chrome   # Build for Chrome only
-node scripts/build.js --browser firefox  # Build for Firefox only
+```sql
+CREATE TABLE IF NOT EXISTS translations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_text TEXT NOT NULL,
+    source_hash TEXT NOT NULL,
+    target_language TEXT NOT NULL,
+    translated_text TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(source_hash, target_language)
+);
+CREATE INDEX IF NOT EXISTS idx_hash_lang ON translations(source_hash, target_language);
 ```
 
-### What the Build Does
-1. Copies `extension/` to `dist/{browser}/`
-2. Patches `manifest.json` per browser:
-   - Firefox: adds `browser_specific_settings.gecko.id`
-3. Produces ready-to-package directories
+## Configuration
 
-## Security Considerations
+Server environment variables (`server/config.py`): `LLM_BACKEND`, `OPENAI_API_KEY`,
+`ANTHROPIC_API_KEY`, `OPENAI_MODEL`, `ANTHROPIC_MODEL`, `DB_PATH`, `BATCH_SIZE`, `MAX_PARALLEL`,
+`SERVER_PORT`. Keys are read from the environment only; nothing is persisted.
 
-- Content scripts run in the page context -- avoid `eval()` and `innerHTML` for untrusted content
-- CLI tool validates all file inputs before processing
-- No external network requests from the extension (all translations are local)
-- Translation files are JSON-only, no executable code
-- DOM manipulation uses `textContent` only, not `innerHTML`
+Extension constants (`extension/shared/constants.js`): `TRANSLATION_SERVER_URL`, `TOOLBAR_ENABLED`,
+`MIN_TEXT_LENGTH`, `SKIP_TAGS`, `TRANSLATABLE_INPUT_TYPES`, `DEFAULT_SETTINGS`, `STORAGE_KEYS`,
+`MESSAGES`. `TRANSLATION_SERVER_URL` is duplicated in `background/service-worker.js` (separate
+scope), and the host also appears in `manifest.json` `host_permissions`.
+
+## Security considerations
+
+- Content scripts run in the page context: no `eval`, no `innerHTML`; DOM writes use `textContent`
+  and `setAttribute` only
+- Translation files are JSON only and are validated before import
+- All SQL uses parameterized statements
+- The extension's only network destination is the configured translation server
+- The server enables permissive CORS and binds `0.0.0.0` with no authentication — it is designed for
+  localhost use and must not be exposed to untrusted networks as-is
+- Page text is sent to whichever provider the server is configured to use; do not point it at
+  confidential pages without understanding that provider's data handling

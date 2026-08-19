@@ -1,0 +1,84 @@
+---
+title: any-i18n
+description: Add multilanguage support to any website at runtime — no access to the site's source code required.
+template: splash
+hero:
+  tagline: Scan any page for translatable text, generate deterministic keys, translate them, and swap the text back in place — live.
+  actions:
+    - text: Get Started
+      link: /any-i18n/getting-started/installation/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/rennerdo30/any-i18n
+      icon: external
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
+## What it is
+
+**any-i18n** retrofits internationalization onto websites that never had it. A Manifest V3 browser
+extension walks the live DOM with a `TreeWalker`, collects every visible text node and every
+translatable attribute, and turns each string into a deterministic key. Those keys can be exported,
+translated (by a local server, by the CLI, or by hand), imported back, and applied — replacing text
+in place while keeping the originals so everything can be reverted.
+
+Nothing is patched into the website itself: no build step, no source access, no server-side changes.
+
+## Why
+
+Plenty of pages you need to read, demo, or hand to a colleague are simply not localized — internal
+tools, legacy admin panels, vendor dashboards, documentation that only exists in one language.
+Machine page translation gives you a black box with no stable identity for a string. any-i18n gives
+each string a reproducible key (`prefix_fnv1ahash`), so a translation you fix once keeps applying on
+every later visit, and the whole translation set is a plain JSON file you own.
+
+<CardGrid stagger>
+  <Card title="TreeWalker DOM scan" icon="magnifier">
+    Two passes: text nodes, then translatable attributes (`title`, `aria-label`, `placeholder`,
+    `alt`, and button-like `value`). Skips `SCRIPT`, `STYLE`, `NOSCRIPT`, `IFRAME`, `SVG`, `META`,
+    `LINK`, `HEAD`, `TITLE`, and anything marked `translate="no"`.
+  </Card>
+  <Card title="Deterministic keys" icon="seti:json">
+    FNV-1a 32-bit hash of the normalized text, prefixed with its first three words — the same
+    sentence always produces the same key, on any page and any run.
+  </Card>
+  <Card title="Reversible in-place rewrite" icon="random">
+    Originals are kept in a `Map`, so one click restores the page exactly. Attribute values are
+    restored too.
+  </Card>
+  <Card title="SPA aware" icon="rocket">
+    A `MutationObserver` (50 ms debounce) translates content added later, and `pushState`,
+    `replaceState`, `popstate`, and `hashchange` are intercepted to handle client-side navigation.
+  </Card>
+  <Card title="Local translation server" icon="setting">
+    A FastAPI service batches keys to a configurable LLM backend, streams results back over SSE,
+    and caches every translation in SQLite so repeat visits cost nothing.
+  </Card>
+  <Card title="Node CLI" icon="seti:powershell">
+    `translate`, `validate`, and `bundle` for working with exported key files and shipping
+    translations inside the extension.
+  </Card>
+</CardGrid>
+
+## The three components
+
+| Component | Location | Role |
+| --- | --- | --- |
+| Browser extension | `extension/` | Manifest V3, plain JS, no bundler. Scans, applies, and reverts translations; popup and in-page toolbar UI. |
+| Translation server | `server/` | FastAPI + SQLite. `POST /api/translate` and a streaming `POST /api/translate/stream`, plus health, stats, and language endpoints. |
+| CLI | `cli/` | Node 18+ ESM tool built on `commander` for translating, validating, and bundling translation JSON. |
+
+## How a page gets translated
+
+1. **Scan** — the content script walks `document.body` and collects text nodes and attributes.
+2. **Key generation** — each normalized string becomes `firstthreewords_fnv1ahash`.
+3. **Translate** — the extension posts unknown keys to the local server, or you export the keys and
+   translate them with the CLI or by hand.
+4. **Apply** — matching keys are written back into the DOM; originals are remembered.
+5. **Stay applied** — the `MutationObserver` translates new nodes as the page changes.
+6. **Revert** — one action restores every original text node and attribute value.
+
+Continue with [Installation](/any-i18n/getting-started/installation/), then
+[Configuration](/any-i18n/getting-started/configuration/).

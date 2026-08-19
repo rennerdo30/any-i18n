@@ -1,0 +1,163 @@
+---
+title: Architecture
+description: How the extension, the translation server, and the CLI fit together.
+---
+
+import { Aside, FileTree } from "@astrojs/starlight/components";
+
+## Repository layout
+
+<FileTree>
+- extension/ Manifest V3 extension, plain JS, no bundler
+  - manifest.json declares content script load order
+  - shared/ constants.js, utils.js, storage.js
+  - content/ key-generator.js, dom-scanner.js, text-replacer.js, mutation-handler.js, content-script.js, toolbar.js
+  - background/service-worker.js server calls, import, lifecycle
+  - popup/ popup.html, popup.js, popup.css, browser-shim.js
+  - translations/manifest.json index of bundled translation files
+  - icons/
+- server/ FastAPI translation service
+  - main.py HTTP endpoints
+  - translator.py backends, batching, prompts
+  - db.py SQLite cache
+  - config.py environment configuration
+  - run.py uvicorn entry point
+  - start.sh venv bootstrap + run
+- cli/ Node CLI (ESM)
+  - bin/any-i18n.js commander entry point
+  - src/commands/ translate.js, validate.js, bundle.js
+- scripts/build.js per-browser packaging
+- docs/ this documentation site
+</FileTree>
+
+## Data flow
+
+```
+             ┌─────────────── browser tab ───────────────┐
+             │ content scripts                            │
+  scan ─────▶│ DomScanner ──▶ KeyGenerator ──▶ keys       │
+             │      │                             │       │
+             │      ▼                             ▼       │
+             │ TextReplacer ◀── translations ── storage    │
+             └──────────────────▲───────────────┬─────────┘
+                                │               │ TRANSLATE_KEYS
+                     storage.onChanged           ▼
+                                │        ┌──────────────┐
+                                └────────│ service      │
+                                         │ worker       │
+                                         └──────┬───────┘
+                                     POST /api/translate/stream
+                                                ▼
+                                    ┌───────────────────────┐
+                                    │ FastAPI server        │
+                                    │ SQLite cache + LLM    │
+                                    └───────────────────────┘
+```
+
+The CLI is an offline alternative to that loop: export keys from the popup, translate the file,
+validate it, bundle it into `extension/translations/`, and the service worker indexes it on install.
+
+## Extension internals
+
+### No bundler
+
+Content scripts are listed in `manifest.json` and loaded in dependency order:
+`shared/constants.js`, `shared/utils.js`, `shared/storage.js`, then `content/key-generator.js`,
+`content/dom-scanner.js`, `content/text-replacer.js`, `content/mutation-handler.js`,
+`content/content-script.js`, `content/toolbar.js`. They share one global scope, which is why
+top-level declarations use `var`. Cross-browser access goes through a one-line shim:
+
+```js
+if (typeof browser === 'undefined') var browser = chrome;
+```
+
+### Scanning
+
+`DomScanner.scan(root)` makes two `TreeWalker` passes.
+
+1. `NodeFilter.SHOW_TEXT` — text nodes. A node is rejected if any ancestor is in `SKIP_TAGS` or
+   carries `translate="no"`, or if the normalized text is not translatable.
+2. `NodeFilter.SHOW_ELEMENT` — attributes. `title` and `aria-label` on any element, `placeholder`
+   on `INPUT`/`TEXTAREA`, `alt` on `IMG`, and `value` on submit/button/reset inputs.
+   `contenteditable` elements are skipped, since their attributes describe user content.
+
+Every collected entry is `{ node, originalText, key }`, plus `attr` for attribute entries — the same
+structure feeds both `TextReplacer` and the key export.
+
+### Key generation
+
+`normalizeText` trims and collapses whitespace. `isTranslatableText` then rejects anything shorter
+than `MIN_TEXT_LENGTH` or matching `^[\d\s\p{P}\p{S}]+$` (digits, punctuation, symbols only).
+
+The key is `prefix + '_' + fnv1aHash(text)`:
+
+- **prefix** — the first three words, lowercased, non-alphanumerics stripped, joined with `_`;
+  `txt` when nothing usable remains (for example for scripts without Latin words)
+- **hash** — FNV-1a 32-bit over the full normalized string, hex encoded, computed with `Math.imul`
+
+```
+"Welcome to our website"  ->  welcome_to_our_<hash>
+```
+
+Because the hash covers the entire string, two different sentences that share their first three
+words still get different keys, and the same sentence always resolves to the same key across pages
+and runs.
+
+### Applying and reverting
+
+`TextReplacer` keeps four structures: a `Map` of text node to original text, a `Map` of element to
+`Map(attr, originalValue)`, and two `WeakMap`s recording what is currently applied so repeated passes
+skip unchanged nodes. Text is written with `textContent` only — never `innerHTML` — and attributes
+with `setAttribute`.
+
+Translated elements get a `data-anyi18n` marker, and a small stylesheet
+(`#anyi18n-translate-styles`) is injected once to soften layout damage from longer strings:
+`overflow-wrap`, `word-break`, `white-space: normal`, and `min-width: 0`.
+
+`revert()` restores every recorded original and clears the marker attributes. `reset()` drops the
+bookkeeping without touching the DOM — used after SPA navigation, when the old nodes are gone.
+
+### Dynamic pages
+
+`MutationHandler` observes `document.body` for `childList`, `subtree`, and `characterData` changes
+with a 50 ms debounce, and sets a `_processing` guard so the observer ignores the mutations caused by
+its own replacements.
+
+SPA navigation is detected by wrapping `history.pushState` and `history.replaceState` and listening
+for `popstate` and `hashchange`. On a URL change the content script resets its state and, after a
+200 ms delay for the new view to render, re-applies the previous language (same host) or checks the
+auto-translate configuration.
+
+### Long-running server calls
+
+An LLM batch can outlive the message port between the popup and the service worker. Instead of
+answering the message, the worker replies `{ started: true }` and publishes progress by writing
+`_translateResult` to `browser.storage.local`; popup and content script both listen on
+`browser.storage.onChanged`. Streaming batches arrive with `partial: true` and are applied as they
+land, so text appears progressively; the final write clears the flag.
+
+## Server internals
+
+`main.py` exposes five endpoints (see the [server guide](/any-i18n/guides/server/)). Both translate
+endpoints first look up the SQLite cache, then send only the misses to the provider.
+`translate_batch` uses a `ThreadPoolExecutor` and an `on_batch_done` callback so each finished chunk
+is cached immediately. `translate_batch_generator` wraps the same pool with a `queue.Queue` to yield
+finished chunks to the SSE response as they complete.
+
+<Aside type="note" title="Why hashes travel to the server">
+  The extension sends `{ key: sourceText }` pairs and the server stores the key as `source_hash`.
+  The cache is therefore keyed by the extension's own deterministic key, which makes cache hits work
+  across domains that happen to contain identical strings.
+</Aside>
+
+## Design decisions
+
+| Decision | Reason |
+| --- | --- |
+| No bundler for the extension | Direct debugging in the browser, no build step while developing. |
+| FNV-1a 32-bit | Fast, dependency-free, deterministic, adequate distribution for page-sized string sets. |
+| `TreeWalker` | The cheapest way to enumerate text nodes with a filter. |
+| `browser.storage.local` | Content scripts cannot fetch extension URLs, so the worker indexes bundled files into storage. |
+| 50 ms debounce | Keeps up with SPA rendering without re-scanning per mutation. |
+| Results via storage, not messages | Message ports close long before a large translation finishes. |
+| SQLite cache | Repeat visits and shared strings cost nothing; a single file is easy to inspect or delete. |

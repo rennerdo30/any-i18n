@@ -1,0 +1,138 @@
+---
+title: Configuration
+description: Every environment variable of the translation server and every tunable constant in the extension.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+## Translation server
+
+All server settings live in `server/config.py` and are read from the process environment, so you
+configure them by exporting variables before starting the server.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `LLM_BACKEND` | `claude-cli` | Which provider to use. One of `claude-cli`, `gemini-cli`, `codex-cli`, `openai-api`, `anthropic-api`. |
+| `OPENAI_API_KEY` | *(empty)* | Credential for the `openai-api` backend. |
+| `ANTHROPIC_API_KEY` | *(empty)* | Credential for the `anthropic-api` backend. |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Model id used by the `openai-api` backend. |
+| `ANTHROPIC_MODEL` | `claude-sonnet-4-20250514` | Model id used by the `anthropic-api` backend. |
+| `DB_PATH` | `server/translations.db` | SQLite file for the translation cache. |
+| `BATCH_SIZE` | `50` | Maximum number of strings sent in one request to the provider. |
+| `MAX_PARALLEL` | `5` | Maximum number of batches translated concurrently. |
+| `SERVER_PORT` | `39418` | Port uvicorn binds. |
+
+<Aside type="caution" title="Keys are never persisted">
+  API keys are only read from the environment; the repository contains no key file and no `.env` is
+  loaded automatically. Export them in your shell (or a shell profile / process manager unit) and
+  keep them out of version control.
+</Aside>
+
+### Choosing a backend
+
+Backends fall into two families.
+
+**Local CLI backends** (`claude-cli`, `gemini-cli`, `codex-cli`) invoke an already-installed command
+line tool with a single prompt argument (`<command> -p "<prompt>"`), with a 120-second timeout per
+batch. The command must be on `PATH`; the server checks with `shutil.which` and fails the batch with
+a clear error if it is missing. No API key is needed — authentication is whatever the CLI tool
+already uses.
+
+```bash
+export LLM_BACKEND=claude-cli   # requires the `claude` command on PATH
+export LLM_BACKEND=gemini-cli   # requires the `gemini` command
+export LLM_BACKEND=codex-cli    # requires the `codex` command
+```
+
+**HTTP API backends** (`openai-api`, `anthropic-api`) call the provider SDK directly and need the
+matching key:
+
+```bash
+export LLM_BACKEND=openai-api
+export OPENAI_API_KEY=...           # your own key
+export OPENAI_MODEL=gpt-4o-mini     # optional override
+```
+
+```bash
+export LLM_BACKEND=anthropic-api
+export ANTHROPIC_API_KEY=...
+export ANTHROPIC_MODEL=claude-sonnet-4-20250514
+```
+
+The OpenAI backend is called with `temperature=0.1`; the Anthropic backend with
+`max_tokens=4096`. An unknown `LLM_BACKEND` value raises `ValueError: Unknown LLM_BACKEND: ...` on
+the first translation attempt.
+
+### Batching and length control
+
+Keys are split into chunks of `BATCH_SIZE` and up to `MAX_PARALLEL` chunks run at once in a thread
+pool. Each string is annotated with a target maximum length before being sent, so translations stay
+close to the original footprint and do not blow up the page layout:
+
+- Latin scripts: `max(len + 8, len * 1.3)`
+- Text containing CJK characters (Han, Hiragana, Katakana, Hangul, CJK punctuation):
+  `max(len * 6, 20)`, because CJK source text is far denser than its translation
+
+Batches are cached the moment they succeed, so a partially failed run still keeps the work it
+completed. If some batches fail but others succeed, the server logs a warning and returns what it
+has; only an all-batches-failed run raises.
+
+### Cache
+
+Translations are stored in SQLite (table `translations`) with a uniqueness constraint on
+`(source_hash, target_language)` and an index on the same pair. All statements are parameterized.
+Two endpoints let you inspect the cache:
+
+```bash
+curl http://localhost:39418/api/stats      # {"total": N, "by_language": {"de": N, ...}}
+curl http://localhost:39418/api/languages  # {"languages": ["de", "fr"]}
+```
+
+Deleting the database file is a safe way to reset — it is recreated on the next startup.
+
+<Aside type="note" title="CORS and binding">
+  The server enables CORS for all origins, methods, and headers, and binds `0.0.0.0`. That is
+  convenient for extension requests but means anyone who can reach the port can spend your provider
+  budget. Keep it on a trusted network, or put it behind a proxy that adds authentication.
+</Aside>
+
+## Extension
+
+The extension has no settings page. Behaviour is controlled by constants in
+`extension/shared/constants.js` and by per-domain state in `browser.storage.local`.
+
+| Constant | Default | Effect |
+| --- | --- | --- |
+| `TRANSLATION_SERVER_URL` | `http://localhost:39418` | Base URL of the translation server. |
+| `TOOLBAR_ENABLED` | `true` | Whether the floating in-page toolbar is injected. |
+| `MIN_TEXT_LENGTH` | `2` | Strings shorter than this are never collected. |
+| `SKIP_TAGS` | `SCRIPT`, `STYLE`, `NOSCRIPT`, `IFRAME`, `SVG`, `META`, `LINK`, `HEAD`, `TITLE` | Elements whose subtrees are ignored. |
+| `TRANSLATABLE_INPUT_TYPES` | `submit`, `button`, `reset` | Input types whose `value` attribute is treated as UI text. |
+| `DEFAULT_SETTINGS` | `enabled: true`, `autoScan: true`, `highlightTranslated: false` | Written to storage on first install. |
+
+<Aside type="caution" title="Changing the server URL">
+  `TRANSLATION_SERVER_URL` appears in `extension/shared/constants.js` **and** in
+  `extension/background/service-worker.js` (the service worker cannot share content-script globals),
+  and the host is also listed in `host_permissions` in `extension/manifest.json`. Change all three,
+  then reload the extension.
+</Aside>
+
+### Per-domain state in storage
+
+| Storage key | Shape | Meaning |
+| --- | --- | --- |
+| `settings` | `{ enabled, autoScan, highlightTranslated }` | Global behaviour flags. |
+| `translations` | `{ domain: { lang: { key: text } } }` | All known translations. |
+| `domainKeys` | `{ domain: { key: sourceText } }` | Last scan result per domain. |
+| `autoTranslate` | `{ domain: { language, enabled } }` | Domains that translate themselves on load. |
+| `_translateResult` | `{ success, translations, cached, translated, partial, source }` | Transient channel for server results; removed once final. |
+
+Turning on **Auto-translate this site** in the popup writes an `autoTranslate` entry for the current
+hostname. On every later visit the content script scans the page, applies whatever is cached, and
+asks the server for the rest — no clicks required.
+
+## CLI
+
+The CLI takes no configuration file; every input is a flag. `any-i18n translate` shells out to the
+`claude` command with a 120-second timeout and a 10 MB output buffer, so that command must be
+installed and authenticated. See the [CLI guide](/any-i18n/guides/cli/) for the full flag reference.

@@ -1,0 +1,132 @@
+---
+title: Browser Extension
+description: Using the popup, the floating toolbar, auto-translate, and import/export.
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+
+## The popup
+
+Click the toolbar icon to open the popup. The header shows the current hostname and a badge with the
+number of keys collected on this page.
+
+| Control | What it does |
+| --- | --- |
+| **Target Language** | Free-text field with autocomplete from the languages already stored for this domain. Any code the provider understands works (`de`, `fr`, `es`, …). |
+| **Translate** | Scans the page if needed, then sends unknown keys to the translation server. Results are stored and applied as they stream in. |
+| **Auto-translate this site** | Remembers the hostname and language, and translates the page automatically on later visits. |
+| **Scan Page** | Re-walks the DOM and refreshes the key set for this domain. |
+| **Apply / Revert** | Applies translations already in storage for the chosen language, or restores every original string. |
+| **Export Keys** | Downloads `_keys.json` containing the current key set. |
+| **Import** | Loads a translation JSON file into storage. |
+| **Scanned Keys** | Expandable list of the collected keys and their source text. |
+
+## The floating toolbar
+
+Every page also gets a small draggable circle in the bottom-right corner (a globe button). It lives
+in a closed shadow root with `:host { all: initial }`, so the host page's CSS cannot affect it and
+its own CSS cannot leak out. Clicking it opens a compact panel with a language field, a
+**Translate** / **Revert** button, an `Auto: <lang>` indicator when auto-translate is on, and a
+status line.
+
+The language field is pre-filled from `navigator.language`, so the common case is one click. Set
+`TOOLBAR_ENABLED = false` in `extension/shared/constants.js` to remove the toolbar entirely.
+
+## Typical flows
+
+### Server-backed (fastest)
+
+<Steps>
+1. Start the translation server (`./server/start.sh`).
+2. Open the page, click the toolbar circle or the extension popup.
+3. Enter a language code and press **Translate**.
+4. Text is replaced batch by batch as the server streams results back.
+5. Press **Revert** to restore the page.
+</Steps>
+
+Anything the server has translated before comes back from its SQLite cache immediately — the
+`cached` event of the SSE stream is emitted before any provider call.
+
+### Fully manual (no server)
+
+<Steps>
+1. Open the page and press **Scan Page**.
+2. Press **Export Keys** to download `_keys.json`.
+3. Translate the `keys` object into a translation file (by hand, or with `any-i18n translate`).
+4. Press **Import** and select that file.
+5. Choose the language and press **Apply**.
+</Steps>
+
+An imported file must contain `_meta.domain`, `_meta.language`, and a `translations` object;
+otherwise the import is rejected with a format error. See
+[File Formats](/any-i18n/guides/file-formats/).
+
+### Shipping translations inside the extension
+
+Put translation files under `extension/translations/<domain>/<lang>.json` and list the domains in
+`extension/translations/manifest.json`:
+
+```json
+{
+  "_meta": { "version": "1.0.0", "description": "Translation manifest for any-i18n" },
+  "domains": {
+    "example.com": { "languages": ["de", "fr"], "lastUpdated": "2026-01-15T11:00:00.000Z" }
+  }
+}
+```
+
+The service worker fetches that manifest on install and on every startup and indexes the listed
+files into `browser.storage.local`, so bundled translations behave exactly like imported ones. A
+missing or empty manifest is not an error — the shipped one has no domains.
+
+<Aside type="caution" title="bundle does not write this manifest">
+  `any-i18n bundle` copies files flat into the output directory and writes a different index
+  (`_manifest.json`). Maintaining `translations/manifest.json` and the per-domain subdirectories is
+  currently a manual step — see the [CLI guide](/any-i18n/guides/cli/).
+</Aside>
+
+## Auto-translate
+
+Toggling **Auto-translate this site** stores `{ language, enabled: true }` for the hostname. On the
+next load the content script:
+
+1. scans the page,
+2. applies whatever is already cached for that language,
+3. sends the still-untranslated keys to the server, and
+4. applies each partial result as it arrives.
+
+Changing the language field while the toggle is on updates the stored language.
+
+## What gets translated
+
+- Visible text nodes with at least `MIN_TEXT_LENGTH` (2) characters
+- `title` and `aria-label` on any element
+- `placeholder` on `<input>` and `<textarea>`
+- `alt` on `<img>`
+- `value` on `<input type="submit|button|reset">`
+
+Ignored: `SCRIPT`, `STYLE`, `NOSCRIPT`, `IFRAME`, `SVG`, `META`, `LINK`, `HEAD`, `TITLE`, any
+subtree marked `translate="no"`, attributes of `contenteditable` elements, and strings made only of
+digits, punctuation, or symbols.
+
+<Aside type="tip" title="Opting a region out">
+  Because the scanner honours `translate="no"`, adding that attribute to an element in a page you do
+  control keeps it (and its whole subtree) untouched.
+</Aside>
+
+## Layout safety
+
+Translations are usually longer than the source. Two mechanisms limit the damage:
+
+- the server annotates each string with a target maximum length and asks for concise phrasing
+- translated elements receive `data-anyi18n` and a defensive stylesheet with `overflow-wrap`,
+  `word-break`, `white-space: normal`, and `min-width: 0`
+
+Reverting removes the marker attributes again.
+
+## Permissions
+
+`storage`, `activeTab`, and `scripting`, plus `host_permissions` for
+`http://localhost:39418/*`. Content scripts match `<all_urls>` at `document_idle` — they need to run
+everywhere by design, but the only network request the extension ever makes goes to the translation
+server on your own machine.

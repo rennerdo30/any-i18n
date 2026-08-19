@@ -1,0 +1,126 @@
+---
+title: Installation
+description: Load the any-i18n extension, start the translation server, and install the CLI.
+---
+
+import { Steps, Tabs, TabItem } from "@astrojs/starlight/components";
+
+any-i18n has three independent parts. The extension works on its own if you import translation
+files by hand; the server and the CLI are optional helpers that produce those files.
+
+## Requirements
+
+- A Chromium-based browser (Chrome, Edge) or Firefox 109+ for the extension
+- **Node.js 18+** for the CLI and the build script
+- **Python 3.10+** for the translation server (`dict[str, str]` type syntax is used)
+
+## Get the source
+
+```bash
+git clone https://github.com/rennerdo30/any-i18n.git
+cd any-i18n
+```
+
+There are no dependencies to install for the extension itself — it is plain JavaScript loaded
+directly by the manifest, with no bundler and no build step for development.
+
+## Load the extension
+
+<Tabs>
+  <TabItem label="Chrome / Edge">
+    <Steps>
+      1. Open `chrome://extensions` (or `edge://extensions`).
+      2. Enable **Developer mode**.
+      3. Click **Load unpacked** and select the `extension/` directory.
+    </Steps>
+  </TabItem>
+  <TabItem label="Firefox">
+    <Steps>
+      1. Open `about:debugging#/runtime/this-firefox`.
+      2. Click **Load Temporary Add-on**.
+      3. Select `extension/manifest.json`.
+    </Steps>
+
+    Temporary add-ons are removed when Firefox restarts. For a persistent install, build a
+    Firefox package first (see below) — the build adds the required
+    `browser_specific_settings.gecko` block.
+  </TabItem>
+</Tabs>
+
+The extension requests only `storage`, `activeTab`, and `scripting`, plus host access to
+`http://localhost:39418/*` so it can talk to a translation server running on your own machine.
+
+## Start the translation server (optional)
+
+The server translates batches of keys through an LLM backend and caches the results in SQLite.
+
+<Tabs>
+  <TabItem label="start.sh">
+    ```bash
+    ./server/start.sh
+    ```
+
+    The script creates `server/.venv` if it does not exist, installs
+    `server/requirements.txt` into it, and runs `python -m server.run` from the repository root.
+  </TabItem>
+  <TabItem label="Manual">
+    ```bash
+    python3 -m venv server/.venv
+    source server/.venv/bin/activate
+    pip install -r server/requirements.txt
+    python -m server.run
+    ```
+
+    Run it from the repository root — `server.main` imports its modules as `server.*`.
+  </TabItem>
+</Tabs>
+
+`server/run.py` starts uvicorn on `0.0.0.0` at port `39418` with auto-reload enabled. Pass
+`--no-reload` to disable reloading:
+
+```bash
+python -m server.run --no-reload
+```
+
+Check that it is up:
+
+```bash
+curl http://localhost:39418/api/health
+# {"status":"ok","backend":"claude-cli"}
+```
+
+The default backend shells out to a locally installed CLI tool. See
+[Configuration](/any-i18n/getting-started/configuration/) for the available backends and their
+environment variables.
+
+## Install the CLI (optional)
+
+```bash
+cd cli
+npm install
+```
+
+The CLI is an ESM package with a single dependency (`commander`) and exposes the `any-i18n` binary:
+
+```bash
+npx any-i18n --help
+```
+
+## Build distributable packages
+
+```bash
+node scripts/build.js                    # chrome, firefox and edge
+node scripts/build.js --browser chrome   # a single target
+```
+
+Each run wipes `dist/` and copies `extension/` into `dist/<browser>/`. For the Firefox target the
+manifest is patched with `browser_specific_settings.gecko` (`id: any-i18n@extension`,
+`strict_min_version: 109.0`). The resulting directories are ready to zip and upload.
+
+The same commands are available through npm scripts:
+
+```bash
+npm run build
+npm run build:chrome
+npm run build:firefox
+```

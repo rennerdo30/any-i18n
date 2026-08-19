@@ -1,0 +1,159 @@
+---
+title: Translation Server
+description: HTTP API reference for the FastAPI translation service, its streaming endpoint, and its SQLite cache.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+The server is a small FastAPI application (`server/main.py`) that turns batches of
+`{ key: source_text }` pairs into translations, caches them in SQLite, and streams results back so
+the extension can apply them progressively. It listens on `0.0.0.0:39418` by default.
+
+## Endpoints
+
+### `POST /api/translate`
+
+Request body:
+
+```json
+{
+  "keys": { "welcome_to_our_1a2b3c4d": "Welcome to our website" },
+  "language": "de",
+  "domain": "example.com"
+}
+```
+
+`domain` is optional and used for logging only.
+
+Response:
+
+```json
+{
+  "translations": { "welcome_to_our_1a2b3c4d": "Willkommen auf unserer Website" },
+  "cached": 0,
+  "translated": 1
+}
+```
+
+`cached` counts keys served from SQLite, `translated` counts keys that required a provider call. If
+translation fails entirely, the response still returns whatever was available plus an `error` field
+with the message — the request does not fail with a 5xx.
+
+### `POST /api/translate/stream`
+
+Same request body, but the response is `text/event-stream` with `Cache-Control: no-cache` and
+`X-Accel-Buffering: no`. Events arrive in this order:
+
+| Event | Data | When |
+| --- | --- | --- |
+| `cached` | `{ translations, cached }` | Immediately, if anything was already in the cache. |
+| `batch` | `{ translations, batch, batchTotal }` | Once per successfully translated chunk. |
+| `error` | `{ error, batch, batchTotal }` | Once per failed chunk; other chunks continue. |
+| `done` | `{ cached, translated, total }` | Always last. |
+
+```
+event: cached
+data: {"translations":{...},"cached":12}
+
+event: batch
+data: {"translations":{...},"batch":1,"batchTotal":3}
+
+event: done
+data: {"cached":12,"translated":150,"total":162}
+```
+
+Each `batch` is written to the cache before it is emitted, so an interrupted stream never loses
+completed work.
+
+The extension always tries this endpoint first and falls back to `POST /api/translate` if the
+streaming request fails.
+
+### `GET /api/languages`
+
+```json
+{ "languages": ["de", "fr"] }
+```
+
+Distinct `target_language` values present in the cache.
+
+### `GET /api/stats`
+
+```json
+{ "total": 1620, "by_language": { "de": 900, "fr": 720 } }
+```
+
+### `GET /api/health`
+
+```json
+{ "status": "ok", "backend": "claude-cli" }
+```
+
+Reports the configured `LLM_BACKEND` without contacting it.
+
+## Batching
+
+`translator.translate_batch` splits the incoming keys into chunks of `BATCH_SIZE` (default 50) and
+runs up to `MAX_PARALLEL` (default 5) chunks concurrently in a `ThreadPoolExecutor`. Failures are
+collected per chunk:
+
+- some chunks fail → warning logged, successful translations returned
+- all chunks fail → `RuntimeError` with the first error message
+
+`translate_batch_generator` is the same machinery behind a `queue.Queue`, which is what makes the SSE
+endpoint able to emit chunks the moment they finish rather than at the end.
+
+## The prompt
+
+Each chunk is sent as a single JSON payload where every entry carries the source text and a target
+length budget:
+
+```json
+{ "welcome_to_our_1a2b3c4d": { "t": "Welcome to our website", "max": 30 } }
+```
+
+The instruction asks for a JSON object of the same keys mapped to translated strings, for HTML tags
+and placeholders to be preserved, for concise phrasing that stays near `max` characters, and for no
+markdown fences or explanations. Responses are parsed with a fence-stripping helper before
+`json.loads`, so a provider that wraps its answer in a fenced code block still works; unparseable
+output raises `LLM returned invalid JSON` and the first 500 characters are logged.
+
+Length budgets: `max(len + 8, len * 1.3)` for Latin scripts, `max(len * 6, 20)` when the source
+contains CJK characters.
+
+## Cache schema
+
+```sql
+CREATE TABLE IF NOT EXISTS translations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_text TEXT NOT NULL,
+    source_hash TEXT NOT NULL,
+    target_language TEXT NOT NULL,
+    translated_text TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(source_hash, target_language)
+);
+CREATE INDEX IF NOT EXISTS idx_hash_lang ON translations(source_hash, target_language);
+```
+
+Writes use `INSERT OR REPLACE` through `executemany`, and lookups use a parameterized `IN (...)`
+clause — no SQL is built from user input. `source_hash` holds the extension's deterministic key, so
+identical strings on different sites share a cache entry.
+
+To edit a translation you dislike, update the row for its `(source_hash, target_language)` pair, or
+delete it and translate again.
+
+## Logging
+
+`server/run.py` configures logging at `INFO` with the format
+`%(asctime)s [%(levelname)s] %(name)s: %(message)s`. An HTTP middleware logs method, path, status,
+and duration for every request; the translator logs batch counts, provider calls, cache hit ratios,
+and failures. Set the root level to `DEBUG` to also see per-lookup cache detail.
+
+`SIGINT` and `SIGTERM` are mapped to `os._exit(0)` so the process dies immediately even under
+uvicorn's reload supervisor.
+
+<Aside type="caution" title="Exposure">
+  CORS is open to all origins and the server binds all interfaces. It is designed to run on
+  localhost for one user; do not expose it to an untrusted network without adding authentication in
+  front of it.
+</Aside>

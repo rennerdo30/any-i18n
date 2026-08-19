@@ -1,48 +1,60 @@
 # any-i18n - Development TODO
 
-## Phase 1: Core Extension
-- [x] Shared constants, utilities, storage
-- [x] Content scripts (scanner, key generator, replacer, mutation handler)
-- [x] Background service worker
-- [x] Popup UI
+## Done
+- [x] Shared constants, utilities, storage abstraction
+- [x] Content scripts (scanner, key generator, replacer, mutation handler, orchestrator)
+- [x] Attribute translation (`title`, `aria-label`, `placeholder`, `alt`, button-like `value`)
+- [x] Floating in-page toolbar (shadow DOM, draggable)
+- [x] Background service worker (server calls, import, bundled translation indexing)
+- [x] Popup UI with auto-translate, import/export, key viewer
 - [x] Manifest V3 configuration
+- [x] SPA navigation handling (`pushState`, `replaceState`, `popstate`, `hashchange`)
+- [x] FastAPI translation server with SQLite cache
+- [x] Multiple LLM backends (three local CLI tools, two HTTP APIs)
+- [x] Streaming (SSE) translation with progressive application
 - [x] CLI tool (translate, validate, bundle)
 - [x] Build script (Chrome, Firefox, Edge)
-- [x] Documentation (SPECIFICATION.md, CLAUDE.md)
+- [x] PNG icons alongside the SVG sources
+- [x] Documentation site (Astro Starlight) + GitHub Pages workflow
 
-## Phase 2: Enhanced Features
-- [ ] Context-aware translation (preserve HTML structure around text)
-- [ ] Translation memory (reuse translations across similar pages)
-- [ ] Batch translation (translate multiple pages at once)
-- [ ] Translation preview mode (highlight translated text)
-- [ ] Settings page for advanced configuration
-- [ ] Keyboard shortcuts for common actions
-- [ ] Right-click context menu for selective translation
-- [ ] Translation quality scoring
-- [ ] Support for RTL languages
-- [ ] Plural forms and gender-aware translations
+## Next
+- [ ] Make `any-i18n bundle` emit `translations/manifest.json` with the `domains` map and the
+      `<domain>/<lang>.json` layout the service worker actually reads
+- [ ] Pin `server/requirements.txt` versions
+- [ ] Replace the deprecated FastAPI `@app.on_event("startup")` with a lifespan handler
+- [ ] Extension settings page (server URL, toolbar toggle) instead of editing constants
+- [ ] Localize the extension UI itself (currently English only)
+- [ ] Automated tests: key generation, scanner filtering, replace/revert round-trip, server batching
+- [ ] Context-aware translation (preserve inline HTML structure around text)
+- [ ] Translation preview mode (highlight translated nodes; `highlightTranslated` is unused)
+- [ ] Keyboard shortcuts and a context-menu action for selective translation
+- [ ] RTL language support; plural and gender-aware forms
 
-## Phase 3: Publishing
+## Publishing
 - [ ] Chrome Web Store listing
 - [ ] Firefox Add-ons listing
 - [ ] Edge Add-ons listing
-- [ ] npm publish CLI tool
-- [ ] Documentation website
-- [ ] Demo video/GIF
-- [ ] Contributing guide
-- [ ] GitHub Actions CI/CD
+- [ ] npm publish for the CLI
+- [ ] Demo GIF in the README
+- [ ] CONTRIBUTING guide
+- [ ] CI: lint the extension, run the CLI against fixtures
 
-## Known Issues
-- Icons are SVG only; need PNG generation for full browser compat
-- CLI requires Claude Code CLI installed separately
-- No automated tests yet
+## Known issues
+- `any-i18n bundle` writes `_manifest.json`, which the extension does not read
+- The CLI's `translate` command is hardwired to one provider command, unlike the server
+- The translation server is unauthenticated with permissive CORS and binds `0.0.0.0`
+- `TRANSLATION_SERVER_URL` is duplicated in the content-script constants and the service worker
+- One key per unique string: no per-context translations
+- No automated tests
 
-## Architecture Decisions
+## Architecture decisions
 | Decision | Rationale |
 |----------|-----------|
-| No bundler | Simplicity, direct debugging, no build step for extension |
-| FNV-1a hash | Fast, deterministic, no dependencies, good distribution |
-| TreeWalker | Most efficient DOM traversal for text nodes |
-| browser.storage.local | Content scripts can't fetch extension URLs |
-| 50ms debounce | Balance between responsiveness and performance for SPAs |
-| Manifest V3 | Future-proof, required by Chrome, supported by Firefox |
+| No bundler | Simplicity, direct debugging, no build step for the extension |
+| FNV-1a hash | Fast, deterministic, dependency-free, good distribution |
+| TreeWalker | Cheapest filtered traversal of text nodes |
+| browser.storage.local | Content scripts cannot fetch extension URLs |
+| 50ms debounce | Balance between responsiveness and cost on SPAs |
+| Results via storage, not messages | Message ports close before long translations finish |
+| SQLite cache on the server | Repeat visits and shared strings cost nothing |
+| Manifest V3 | Required by Chrome, supported by Firefox 109+ |

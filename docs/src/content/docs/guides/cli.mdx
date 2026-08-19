@@ -1,0 +1,112 @@
+---
+title: CLI
+description: Reference for the any-i18n command line tool — translate, validate, and bundle.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+The CLI (`cli/`) is an ESM Node 18+ package built on `commander`. It works on the JSON files the
+extension exports and imports, which makes it useful for translating without running the server, for
+checking a translation file into a repository, and for reviewing translations in a diff.
+
+```bash
+cd cli
+npm install
+npx any-i18n --help
+```
+
+## `translate`
+
+```bash
+npx any-i18n translate --input _keys.json --language de [--output de.json]
+```
+
+| Flag | Required | Meaning |
+| --- | --- | --- |
+| `--input <file>` | yes | Path to a `_keys.json` export. |
+| `--language <lang>` | yes | Target language code, e.g. `de`, `fr`, `es`. |
+| `--output <file>` | no | Output path; defaults to `<language>.json` in the working directory. |
+
+The input must contain both `_meta` and `keys`, and `keys` must not be empty — otherwise the command
+exits with status 1 and a message. All keys are sent in a single prompt asking for the same keys with
+translated values, preserving HTML tags and placeholders.
+
+The prompt is handed to the local `claude` command (`claude -p "<prompt>"`) with a 120-second timeout
+and a 10 MB output buffer. If that command is missing or fails, the CLI says so and exits 1. The
+first `{ ... }` block in the response is parsed as JSON, so a fenced answer is still accepted.
+
+Output shape:
+
+```json
+{
+  "_meta": {
+    "domain": "example.com",
+    "language": "de",
+    "translatedAt": "2026-01-15T11:00:00.000Z",
+    "sourceVersion": "1.0.0"
+  },
+  "translations": { "welcome_to_our_1a2b3c4d": "Willkommen auf unserer Website" }
+}
+```
+
+`domain` is copied from the key file's `_meta.domain` (`unknown` if absent) and `sourceVersion` from
+its `_meta.version` or `_meta.exportedAt`. This is exactly the format the extension's **Import**
+button expects.
+
+<Aside type="note" title="Server vs CLI">
+  The server splits work into batches, translates them in parallel, caches results in SQLite, and
+  supports several backends. The CLI sends everything in one prompt to one fixed command and caches
+  nothing. Prefer the server for large pages; the CLI is the simpler path for a one-off file.
+</Aside>
+
+## `validate`
+
+```bash
+npx any-i18n validate --input de.json [--keys _keys.json]
+```
+
+Checks the translation file and exits non-zero if anything is wrong:
+
+- `_meta` must exist and contain `domain`, `language`, and `translatedAt`
+- `translations` must exist
+- empty or whitespace-only values are reported and treated as a failure
+- with `--keys`, every key from the source file must be present (missing keys fail the run) and keys
+  not present in the source are reported as extras (warning only)
+
+The number of translations found is printed, then either `Validation passed.` or
+`Validation failed.`. The non-zero exit status makes it usable as a pre-commit or CI check.
+
+## `bundle`
+
+```bash
+npx any-i18n bundle --input ./translations --output ../extension/translations
+```
+
+Copies every `*.json` file from the input directory into the output directory (created if needed),
+skipping files that are not valid JSON with a message, and writes an index:
+
+```json
+{
+  "generatedAt": "2026-01-15T11:05:00.000Z",
+  "translations": [
+    { "file": "de.json", "language": "de", "domain": "example.com" }
+  ]
+}
+```
+
+Language and domain come from each file's `_meta`, falling back to the file name and `unknown`.
+
+<Aside type="caution" title="Known gap">
+  This index is written as `_manifest.json` with a flat `translations` array. The extension's service
+  worker instead reads `translations/manifest.json` with a `domains` map and expects files at
+  `translations/<domain>/<lang>.json`. So `bundle` currently gets the files into place but does not
+  produce the manifest the extension indexes — write or update
+  `extension/translations/manifest.json` yourself, or import the file through the popup instead.
+</Aside>
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Success. |
+| `1` | Unreadable or malformed input, empty key set, provider command failure, unparseable response, or failed validation. |

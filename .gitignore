@@ -3,22 +3,59 @@ node_modules/
 
 # Build output
 dist/
+build/
+*.tsbuildinfo
 
-# Server
-server/.venv/
-server/__pycache__/
+# Docs site (Astro)
+docs/.astro/
+docs/dist/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Server runtime data (local translation cache)
 server/translations.db
+*.db
+*.sqlite
+*.sqlite3
 
-# Environment
-*.env
+# Environment / secrets
+.env
 .env.*
+*.env
+!.env.example
+*.pem
+*.key
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+
+# Local editor / agent configuration
+.claude/
+CLAUDE.md
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+*~
 
 # OS
 .DS_Store
+._*
 Thumbs.db
+desktop.ini
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.tgz
