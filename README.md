@@ -178,7 +178,7 @@ any-i18n/
 │   ├── config.py         environment configuration
 │   ├── run.py            uvicorn entry point
 │   └── start.sh          venv bootstrap + run
-├── cli/                  Node 18+ ESM CLI (commander)
+├── cli/                  Node 22.12+ ESM CLI (commander)
 │   ├── bin/any-i18n.js
 │   └── src/commands/     translate.js, validate.js, bundle.js
 ├── scripts/build.js      per-browser packaging
@@ -207,7 +207,7 @@ progress through `browser.storage.local` and the UI listens on `storage.onChange
 | --- | --- |
 | Extension | Vanilla JavaScript, WebExtensions API, Manifest V3, Shadow DOM, no bundler |
 | Server | Python 3.10+, FastAPI, uvicorn, SQLite, `openai` / `anthropic` SDKs |
-| CLI | Node.js 18+, ESM, `commander` |
+| CLI | Node.js 22.12+, ESM, `commander` |
 | Docs | Astro, Starlight, `starlight-theme-galaxy`, GitHub Pages |
 
 ## Limitations
