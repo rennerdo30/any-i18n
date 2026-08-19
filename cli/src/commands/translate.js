@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync } from 'fs';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { resolve } from 'path';
 
 export function translate(options) {
@@ -41,10 +41,16 @@ export function translate(options) {
     + 'Do not include any explanation, just the JSON object.\n\n'
     + keysJson;
 
-  // Call Claude CLI
+  // Call the backend CLI.
+  //
+  // The prompt embeds text scraped from arbitrary web pages, so it must never
+  // be interpolated into a shell command string. JSON.stringify escapes for
+  // JSON, not for a shell: `$(...)`, backticks and backslashes all survive
+  // inside double quotes, which would let page content execute commands here.
+  // execFileSync passes argv directly to the binary with no shell involved.
   let result;
   try {
-    result = execSync('claude -p ' + JSON.stringify(prompt), {
+    result = execFileSync('claude', ['-p', prompt], {
       encoding: 'utf-8',
       maxBuffer: 10 * 1024 * 1024,
       timeout: 120000
