@@ -9,7 +9,10 @@ var MESSAGES = {
   IMPORT_TRANSLATIONS: 'IMPORT_TRANSLATIONS',
   EXPORT_KEYS: 'EXPORT_KEYS',
   GET_STATUS: 'GET_STATUS',
-  TRANSLATE_KEYS: 'TRANSLATE_KEYS'
+  TRANSLATE_KEYS: 'TRANSLATE_KEYS',
+  GET_AUTO_TRANSLATE: 'GET_AUTO_TRANSLATE',
+  SET_AUTO_TRANSLATE: 'SET_AUTO_TRANSLATE',
+  REMOVE_AUTO_TRANSLATE: 'REMOVE_AUTO_TRANSLATE'
 };
 
 var CONTENT_SCRIPT_FILES = [
@@ -39,6 +42,8 @@ var keysCountLabel = document.getElementById('keys-count-label');
 
 var translateBtn = document.getElementById('translate-btn');
 var translateLabel = translateBtn.querySelector('.translate-label');
+var autoTranslateToggle = document.getElementById('auto-translate-toggle');
+var autoTranslateLangEl = document.getElementById('auto-translate-lang');
 
 var scanLabel = scanBtn.querySelector('.scan-label');
 var currentTabId = null;
@@ -259,6 +264,18 @@ browser.tabs.query({ active: true, currentWindow: true }).then(function(tabs) {
       }
     }
   }).catch(function() {});
+
+  // Check auto-translate state for current domain
+  sendToBackground({ type: MESSAGES.GET_AUTO_TRANSLATE, domain: domainEl.textContent }).then(function(response) {
+    if (response && response.config && response.config.enabled) {
+      autoTranslateToggle.checked = true;
+      autoTranslateLangEl.textContent = 'Auto: ' + response.config.language;
+      if (response.config.language) {
+        languageInput.value = response.config.language;
+        updateTranslateButton();
+      }
+    }
+  }).catch(function() {});
 });
 
 // Scan Page
@@ -389,7 +406,29 @@ browser.storage.onChanged.addListener(function(changes) {
   var result = changes._translateResult.newValue;
   if (!result) return;
 
-  // Clean up the flag
+  // Only process popup-initiated results
+  if (result.source !== 'popup') return;
+
+  // Handle partial (streaming) results
+  if (result.partial) {
+    var soFar = Object.keys(result.translations || {}).length;
+    if (translateLabel) translateLabel.textContent = 'Translating...';
+    showStatus('Translating... ' + soFar + ' keys so far', 'info');
+
+    // Progressively apply translations
+    var lang = languageInput.value.trim();
+    if (lang) {
+      sendToContentScript({ type: MESSAGES.APPLY_TRANSLATION, language: lang }).then(function(applyResp) {
+        if (applyResp && applyResp.success) {
+          isTranslationApplied = true;
+          updateApplyButton();
+        }
+      }).catch(function() {});
+    }
+    return; // Don't clean up or re-enable button for partial results
+  }
+
+  // Final result — clean up the flag
   browser.storage.local.remove('_translateResult');
 
   translateBtn.disabled = false;
@@ -429,6 +468,51 @@ browser.storage.onChanged.addListener(function(changes) {
   }
 });
 
+// Auto-translate toggle
+autoTranslateToggle.addEventListener('change', function() {
+  var domain = domainEl.textContent;
+  if (!domain || domain === '--') return;
+
+  if (autoTranslateToggle.checked) {
+    var lang = languageInput.value.trim();
+    if (!lang) {
+      showStatus('Please enter a language first.', 'error');
+      autoTranslateToggle.checked = false;
+      return;
+    }
+    sendToBackground({
+      type: MESSAGES.SET_AUTO_TRANSLATE,
+      domain: domain,
+      language: lang
+    }).then(function() {
+      autoTranslateLangEl.textContent = 'Auto: ' + lang;
+    });
+  } else {
+    sendToBackground({
+      type: MESSAGES.REMOVE_AUTO_TRANSLATE,
+      domain: domain
+    }).then(function() {
+      autoTranslateLangEl.textContent = '';
+    });
+  }
+});
+
+// Update auto-translate config when language changes while toggle is on
+languageInput.addEventListener('change', function() {
+  if (!autoTranslateToggle.checked) return;
+  var lang = languageInput.value.trim();
+  var domain = domainEl.textContent;
+  if (!lang || !domain || domain === '--') return;
+
+  sendToBackground({
+    type: MESSAGES.SET_AUTO_TRANSLATE,
+    domain: domain,
+    language: lang
+  }).then(function() {
+    autoTranslateLangEl.textContent = 'Auto: ' + lang;
+  });
+});
+
 // Translate via server (auto-scans if needed)
 translateBtn.addEventListener('click', function() {
   clearStatus();
@@ -464,7 +548,8 @@ translateBtn.addEventListener('click', function() {
       type: MESSAGES.TRANSLATE_KEYS,
       keys: keys,
       language: lang,
-      domain: domainEl.textContent
+      domain: domainEl.textContent,
+      source: 'popup'
     });
   }).catch(function(err) {
     translateBtn.disabled = false;

@@ -1,14 +1,17 @@
 /**
  * Main content script orchestrator.
  * Coordinates DOM scanning, key generation, translation application,
- * and mutation observation. Communicates with popup and background
- * via browser.runtime.onMessage.
+ * mutation observation, and SPA navigation handling.
+ * Communicates with popup and background via browser.runtime.onMessage.
  */
 (function() {
   'use strict';
 
+  /** Current URL for SPA navigation detection */
+  var currentUrl = window.location.href;
+
   /** Current domain */
-  var currentDomain = getDomain(window.location.href);
+  var currentDomain = getDomain(currentUrl);
 
   /** Whether the page has been scanned */
   var isScanned = false;
@@ -99,6 +102,141 @@
   }
 
   /**
+   * Reset internal state without reverting text (nodes may be detached after SPA navigation).
+   */
+  function resetState() {
+    MutationHandler.stop();
+    TextReplacer.reset();
+    DomScanner.clear();
+    collectedKeys = {};
+    isScanned = false;
+  }
+
+  /**
+   * Handle SPA navigation (pushState, replaceState, popstate, hashchange).
+   * Detects URL changes, resets stale state, and re-applies translations if appropriate.
+   */
+  function handleNavigation() {
+    var newUrl = window.location.href;
+    if (newUrl === currentUrl) return;
+
+    var previousLanguage = activeLanguage;
+    var previousDomain = currentDomain;
+
+    currentUrl = newUrl;
+    currentDomain = getDomain(newUrl);
+
+    resetState();
+    activeLanguage = null;
+
+    // Wait for SPA to render new content before re-translating
+    setTimeout(function() {
+      if (previousDomain === currentDomain && previousLanguage) {
+        // Same domain, had active translation — re-apply
+        applyTranslation(previousLanguage);
+      } else {
+        // Different domain or no previous translation — check auto-translate
+        checkAutoTranslate();
+      }
+    }, 200);
+  }
+
+  /**
+   * Check if auto-translate is configured for the current domain and apply if so.
+   */
+  function checkAutoTranslate() {
+    StorageManager.getAutoTranslate(currentDomain).then(function(config) {
+      if (!config || !config.enabled || !config.language) return;
+
+      var language = config.language;
+
+      // Always scan the page for translatable keys
+      scanPage();
+
+      StorageManager.getTranslations(currentDomain, language).then(function(translations) {
+        // Apply whatever translations we already have
+        if (translations && Object.keys(translations).length > 0) {
+          applyTranslation(language);
+        }
+
+        // Check for keys that still need translation
+        var untranslated = {};
+        var keys = Object.keys(collectedKeys);
+        for (var i = 0; i < keys.length; i++) {
+          if (!translations || !translations[keys[i]]) {
+            untranslated[keys[i]] = collectedKeys[keys[i]];
+          }
+        }
+
+        // Request translations for any untranslated keys
+        if (Object.keys(untranslated).length > 0) {
+          browser.runtime.sendMessage({
+            type: MESSAGES.TRANSLATE_KEYS,
+            keys: untranslated,
+            language: language,
+            domain: currentDomain,
+            source: 'auto'
+          });
+        }
+      });
+    });
+  }
+
+  // --- SPA Navigation Detection ---
+
+  // Monkey-patch history.pushState and history.replaceState
+  var originalPushState = history.pushState;
+  var originalReplaceState = history.replaceState;
+
+  history.pushState = function() {
+    originalPushState.apply(this, arguments);
+    handleNavigation();
+  };
+
+  history.replaceState = function() {
+    originalReplaceState.apply(this, arguments);
+    handleNavigation();
+  };
+
+  // Listen for popstate and hashchange
+  window.addEventListener('popstate', handleNavigation);
+  window.addEventListener('hashchange', handleNavigation);
+
+  // --- Listen for auto-translate results from background ---
+  browser.storage.onChanged.addListener(function(changes) {
+    if (!changes._translateResult) return;
+    var result = changes._translateResult.newValue;
+    if (!result) return;
+
+    // Only process auto-translate results here
+    if (result.source !== 'auto') return;
+
+    // Handle partial (streaming) results — apply progressively
+    if (result.partial) {
+      if (result.success) {
+        StorageManager.getAutoTranslate(currentDomain).then(function(config) {
+          if (config && config.enabled && config.language) {
+            applyTranslation(config.language);
+          }
+        });
+      }
+      return; // Don't clean up for partial results
+    }
+
+    // Final result — clean up the flag
+    browser.storage.local.remove('_translateResult');
+
+    if (result.success) {
+      // Apply the translation
+      StorageManager.getAutoTranslate(currentDomain).then(function(config) {
+        if (config && config.enabled && config.language) {
+          applyTranslation(config.language);
+        }
+      });
+    }
+  });
+
+  /**
    * Get the current status of the content script.
    */
   function getStatus() {
@@ -161,13 +299,21 @@
     apply: applyTranslation,
     revert: revertTranslation,
     getStatus: getStatus,
-    getKeys: function() { return collectedKeys; }
+    getKeys: function() { return collectedKeys; },
+    handleNavigation: handleNavigation
   };
 
-  // Auto-scan on load if settings allow
-  StorageManager.getSettings().then(function(settings) {
-    if (settings.enabled && settings.autoScan) {
-      scanPage();
+  // Auto-translate takes priority, then autoScan
+  StorageManager.getAutoTranslate(currentDomain).then(function(config) {
+    if (config && config.enabled && config.language) {
+      checkAutoTranslate();
+    } else {
+      // Fall back to auto-scan
+      StorageManager.getSettings().then(function(settings) {
+        if (settings.enabled && settings.autoScan) {
+          scanPage();
+        }
+      });
     }
   });
 

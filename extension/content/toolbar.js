@@ -125,7 +125,16 @@
     '  transition: opacity 0.3s;',
     '}',
     '.status-line.error { color: #dc3545; }',
-    '.status-line.hidden { opacity: 0; }'
+    '.status-line.hidden { opacity: 0; }',
+
+    '.auto-indicator {',
+    '  font-size: 11px;',
+    '  color: #0e7c6b;',
+    '  font-weight: 600;',
+    '  margin-top: 4px;',
+    '  min-height: 0;',
+    '}',
+    '.auto-indicator:empty { display: none; }'
   ].join('\n');
 
   // Build DOM structure
@@ -159,8 +168,12 @@
   var statusLine = document.createElement('div');
   statusLine.className = 'status-line hidden';
 
+  var autoIndicator = document.createElement('div');
+  autoIndicator.className = 'auto-indicator';
+
   panel.appendChild(panelRow);
   panel.appendChild(statusLine);
+  panel.appendChild(autoIndicator);
 
   // Icon button (always visible)
   var iconBtn = document.createElement('button');
@@ -217,6 +230,17 @@
     }).catch(function() {});
   }
 
+  function updateAutoIndicator() {
+    var domain = getDomain(window.location.href);
+    StorageManager.getAutoTranslate(domain).then(function(config) {
+      if (config && config.enabled && config.language) {
+        autoIndicator.textContent = 'Auto: ' + config.language;
+      } else {
+        autoIndicator.textContent = '';
+      }
+    });
+  }
+
   // Toggle expand/collapse
   iconBtn.addEventListener('click', function(e) {
     if (isDragging) return;
@@ -224,6 +248,7 @@
     panel.className = isExpanded ? 'panel open' : 'panel';
     if (isExpanded) {
       populateLanguages();
+      updateAutoIndicator();
       langInput.focus();
     }
   });
@@ -270,7 +295,8 @@
       type: MESSAGES.TRANSLATE_KEYS,
       keys: keys,
       language: lang,
-      domain: domain
+      domain: domain,
+      source: 'toolbar'
     });
   });
 
@@ -279,6 +305,31 @@
     if (!changes._translateResult) return;
     var result = changes._translateResult.newValue;
     if (!result) return;
+
+    // Only process toolbar-initiated results
+    if (result.source !== 'toolbar') return;
+
+    // Handle partial (streaming) results
+    if (result.partial) {
+      var soFar = Object.keys(result.translations || {}).length;
+      actionBtn.disabled = true;
+      actionBtn.textContent = 'Translating...';
+      showStatus('Translating... ' + soFar + ' keys so far', false);
+
+      // Progressively apply translations
+      var lang = langInput.value.trim();
+      if (lang) {
+        api.apply(lang).then(function(applyResult) {
+          if (applyResult && applyResult.success) {
+            isTranslated = true;
+          }
+        });
+      }
+      return; // Don't clean up for partial results
+    }
+
+    // Final result — clean up the flag
+    browser.storage.local.remove('_translateResult');
 
     if (result.success) {
       var lang = langInput.value.trim();

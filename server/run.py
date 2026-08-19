@@ -1,4 +1,5 @@
 import logging
+import os
 import signal
 import sys
 import uvicorn
@@ -10,8 +11,9 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 
-signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
-signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+# os._exit bypasses all exception handlers — uvicorn's reload mode swallows sys.exit/SystemExit
+signal.signal(signal.SIGINT, lambda *_: os._exit(0))
+signal.signal(signal.SIGTERM, lambda *_: os._exit(0))
 
 if __name__ == "__main__":
     reload = "--no-reload" not in sys.argv

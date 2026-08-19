@@ -1,8 +1,10 @@
 import json
 import logging
+import queue
 import re
 import shutil
 import subprocess
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from server.config import (
     LLM_BACKEND, OPENAI_API_KEY, ANTHROPIC_API_KEY,
@@ -12,16 +14,47 @@ from server.config import (
 log = logging.getLogger(__name__)
 
 TRANSLATION_PROMPT = (
-    "Translate the following JSON values to {language}. "
-    "Return ONLY a valid JSON object with the same keys and translated values. "
+    "Translate the following JSON to {language}. "
+    "Each entry has \"t\" (text to translate) and \"max\" (target character length). "
+    "Return ONLY a valid JSON object mapping the same keys to translated strings (not objects). "
+    "Keep each translation as close to \"max\" characters as possible. "
+    "Use concise phrasing, shorter synonyms, or abbreviations when needed to stay compact. "
+    "Prioritize natural, readable translations that fit the UI context. "
     "Preserve any HTML tags, placeholders, or special formatting in the values. "
     "Do not add any explanation, markdown formatting, or code fences."
 )
 
 
+def _has_cjk(text):
+    """Check if text contains CJK characters (Chinese, Japanese, Korean)."""
+    for ch in text:
+        cp = ord(ch)
+        if (0x4E00 <= cp <= 0x9FFF    # CJK Unified Ideographs
+                or 0x3400 <= cp <= 0x4DBF  # CJK Extension A
+                or 0x3040 <= cp <= 0x309F  # Hiragana
+                or 0x30A0 <= cp <= 0x30FF  # Katakana
+                or 0xAC00 <= cp <= 0xD7AF  # Hangul Syllables
+                or 0x3000 <= cp <= 0x303F):  # CJK Punctuation
+            return True
+    return False
+
+
+def _max_length(text):
+    """Calculate max allowed translation length for a source text.
+    CJK text is extremely dense (~1 char = 1-2 English words), so it needs
+    much more expansion room. Latin scripts allow ~30% growth."""
+    n = len(text)
+    if _has_cjk(text):
+        return max(n * 6, 20)
+    return max(n + 8, int(n * 1.3))
+
+
 def _build_prompt(texts, language):
     instruction = TRANSLATION_PROMPT.format(language=language)
-    payload = json.dumps(texts, ensure_ascii=False)
+    annotated = {}
+    for key, text in texts.items():
+        annotated[key] = {"t": text, "max": _max_length(text)}
+    payload = json.dumps(annotated, ensure_ascii=False)
     return f"{instruction}\n\n{payload}"
 
 
@@ -159,3 +192,58 @@ def translate_batch(texts, language, on_batch_done=None):
         log.warning("%d/%d batches failed, %d translations succeeded", len(errors), batch_count, len(all_translated))
 
     return all_translated
+
+
+def translate_batch_generator(texts, language):
+    """Generator variant of translate_batch that yields results as batches complete.
+    Yields (batch_num, batch_total, source_chunk, result_chunk) tuples.
+    Uses a queue to bridge between ThreadPoolExecutor callbacks and the generator."""
+    if not texts:
+        return
+
+    items = list(texts.items())
+    total = len(items)
+    chunks = [dict(items[i:i + BATCH_SIZE]) for i in range(0, total, BATCH_SIZE)]
+    batch_count = len(chunks)
+    workers = min(MAX_PARALLEL, batch_count)
+
+    log.info("translate_batch_generator: %d texts -> %s via %s (batch_size=%d, batches=%d, parallel=%d)",
+             total, language, LLM_BACKEND, BATCH_SIZE, batch_count, workers)
+
+    q = queue.Queue()
+
+    def run_chunk(batch_num, chunk):
+        log.info("Batch %d/%d: %d texts", batch_num, batch_count, len(chunk))
+        result = _translate_single_batch(chunk, language)
+        log.info("Batch %d/%d done: got %d translations", batch_num, batch_count, len(result))
+        return batch_num, chunk, result
+
+    def run_all():
+        completed = 0
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {
+                pool.submit(run_chunk, i + 1, chunk): i
+                for i, chunk in enumerate(chunks)
+            }
+            for future in as_completed(futures):
+                try:
+                    batch_num, chunk, result = future.result()
+                    q.put((batch_num, batch_count, chunk, result))
+                except Exception as e:
+                    idx = futures[future]
+                    log.error("Batch %d/%d failed: %s", idx + 1, batch_count, e)
+                    q.put(('error', idx + 1, batch_count, str(e)))
+                completed += 1
+        q.put(None)  # Sentinel to signal completion
+
+    thread = threading.Thread(target=run_all, daemon=True)
+    thread.start()
+
+    while True:
+        try:
+            item = q.get(timeout=0.5)
+        except queue.Empty:
+            continue
+        if item is None:
+            break
+        yield item

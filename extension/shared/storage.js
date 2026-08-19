@@ -88,5 +88,41 @@ var StorageManager = {
       allKeys[domain] = keys;
       return StorageManager.set(STORAGE_KEYS.domainKeys, allKeys);
     });
+  },
+
+  /**
+   * Get auto-translate config for a domain.
+   * Returns { language, enabled } or null if not configured.
+   */
+  getAutoTranslate: function(domain) {
+    return this.get(STORAGE_KEYS.autoTranslate).then(function(all) {
+      if (!all || !all[domain]) return null;
+      return all[domain];
+    });
+  },
+
+  /**
+   * Set auto-translate config for a domain.
+   * Pass config = null to remove the entry.
+   */
+  setAutoTranslate: function(domain, config) {
+    return this.get(STORAGE_KEYS.autoTranslate).then(function(all) {
+      all = all || {};
+      if (config === null) {
+        delete all[domain];
+      } else {
+        all[domain] = config;
+      }
+      return StorageManager.set(STORAGE_KEYS.autoTranslate, all);
+    });
+  },
+
+  /**
+   * Get all auto-translate configs.
+   */
+  getAllAutoTranslate: function() {
+    return this.get(STORAGE_KEYS.autoTranslate).then(function(all) {
+      return all || {};
+    });
   }
 };

@@ -463,6 +463,81 @@ header h1 {
   text-overflow: ellipsis;
 }
 
+/* ── Auto-translate Toggle ── */
+.auto-translate-section {
+  margin-bottom: 10px;
+}
+
+.auto-translate-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.auto-translate-label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.auto-translate-lang {
+  font-size: 11px;
+  color: var(--text-mute);
+  margin-top: 4px;
+  min-height: 0;
+}
+
+.auto-translate-lang:empty {
+  display: none;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--border-hi);
+  border-radius: 20px;
+  transition: background 0.2s;
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--accent);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(16px);
+}
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar {
   width: 6px;

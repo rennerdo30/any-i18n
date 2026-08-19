@@ -1,10 +1,12 @@
+import json
 import logging
 import time
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from server.db import init_db, get_cached_batch, set_cached_batch, get_stats, get_languages
-from server.translator import translate_batch
+from server.translator import translate_batch, translate_batch_generator
 from server.config import LLM_BACKEND
 
 log = logging.getLogger(__name__)
@@ -86,6 +88,58 @@ def translate(req: TranslateRequest):
         "cached": len(cached),
         "translated": len(translated),
     }
+
+
+@app.post("/api/translate/stream")
+def translate_stream(req: TranslateRequest):
+    log.info("Stream translate request: domain=%s lang=%s keys=%d", req.domain, req.language, len(req.keys))
+
+    key_to_text = req.keys
+    all_hashes = list(key_to_text.keys())
+
+    # Check cache
+    cached = get_cached_batch(all_hashes, req.language)
+    log.info("Cache: %d hits / %d total", len(cached), len(all_hashes))
+
+    # Determine uncached keys
+    uncached_keys = {k: v for k, v in key_to_text.items() if k not in cached}
+
+    def event_stream():
+        # Send cached translations immediately
+        if cached:
+            yield "event: cached\ndata: " + json.dumps({"translations": cached, "cached": len(cached)}) + "\n\n"
+
+        translated_count = 0
+        errors = []
+
+        if uncached_keys:
+            for item in translate_batch_generator(uncached_keys, req.language):
+                if item[0] == 'error':
+                    _, batch_num, batch_total, error_msg = item
+                    errors.append(error_msg)
+                    yield "event: error\ndata: " + json.dumps({"error": error_msg, "batch": batch_num, "batchTotal": batch_total}) + "\n\n"
+                else:
+                    batch_num, batch_total, source_chunk, result_chunk = item
+
+                    # Cache this batch
+                    entries = []
+                    for key, source_text in source_chunk.items():
+                        if key in result_chunk:
+                            entries.append((source_text, key, result_chunk[key]))
+                    set_cached_batch(entries, req.language)
+                    log.info("Cached batch: %d translations", len(entries))
+
+                    translated_count += len(result_chunk)
+                    yield "event: batch\ndata: " + json.dumps({"translations": result_chunk, "batch": batch_num, "batchTotal": batch_total}) + "\n\n"
+
+        # Final done event
+        yield "event: done\ndata: " + json.dumps({"cached": len(cached), "translated": translated_count, "total": len(all_hashes)}) + "\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    )
 
 
 @app.get("/api/languages")

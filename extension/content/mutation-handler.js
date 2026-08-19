@@ -13,6 +13,9 @@ var MutationHandler = {
   /** Whether the observer is currently active */
   _observing: false,
 
+  /** Whether we're currently processing mutations (to ignore our own DOM changes) */
+  _processing: false,
+
   /**
    * Start observing DOM changes on document.body.
    * @param {Function} callback - Called (debounced at 50ms) when mutations are detected
@@ -25,10 +28,18 @@ var MutationHandler = {
     var self = this;
 
     this._observer = new MutationObserver(function(mutations) {
+      // Ignore mutations triggered by our own text replacements
+      if (self._processing) return;
+
       // Debounce rapid mutations to avoid excessive processing
       clearTimeout(self._debounceTimer);
       self._debounceTimer = setTimeout(function() {
-        callback(mutations);
+        self._processing = true;
+        try {
+          callback(mutations);
+        } finally {
+          self._processing = false;
+        }
       }, 50);
     });
 

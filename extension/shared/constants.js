@@ -6,7 +6,8 @@ var STORAGE_KEYS = {
   translations: 'translations',
   settings: 'settings',
   activeLanguage: 'activeLanguage',
-  domainKeys: 'domainKeys'
+  domainKeys: 'domainKeys',
+  autoTranslate: 'autoTranslate'
 };
 
 // Default extension settings
@@ -24,6 +25,9 @@ var SKIP_TAGS = new Set([
 // Minimum text length to consider for translation
 var MIN_TEXT_LENGTH = 2;
 
+// Input types whose value attribute contains translatable UI text
+var TRANSLATABLE_INPUT_TYPES = new Set(['submit', 'button', 'reset']);
+
 // Translation server URL
 var TRANSLATION_SERVER_URL = 'http://localhost:39418';
 
@@ -40,5 +44,8 @@ var MESSAGES = {
   IMPORT_TRANSLATIONS: 'IMPORT_TRANSLATIONS',
   EXPORT_KEYS: 'EXPORT_KEYS',
   GET_STATUS: 'GET_STATUS',
-  TRANSLATE_KEYS: 'TRANSLATE_KEYS'
+  TRANSLATE_KEYS: 'TRANSLATE_KEYS',
+  GET_AUTO_TRANSLATE: 'GET_AUTO_TRANSLATE',
+  SET_AUTO_TRANSLATE: 'SET_AUTO_TRANSLATE',
+  REMOVE_AUTO_TRANSLATE: 'REMOVE_AUTO_TRANSLATE'
 };
