@@ -8,6 +8,8 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "any-i18n",
+      logo: { src: "./src/assets/logo.svg" },
+      favicon: "/favicon.svg",
       description:
         "Browser extension, translation server, and CLI that add multilanguage support to any website at runtime.",
       plugins: [starlightThemeGalaxy()],

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <title>any-i18n</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#17b597"/>
+      <stop offset="1" stop-color="#0a5f52"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <!-- Back bubble: the other language (文) -->
+  <path d="M60 18h42a12 12 0 0 1 12 12v32a12 12 0 0 1-12 12h-4l2 14-17-14H60a12 12 0 0 1-12-12V30a12 12 0 0 1 12-12z" fill="#a8f0de"/>
+  <g fill="none" stroke="#0a5f52" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M81 27v6"/>
+    <path d="M65 37h32"/>
+    <path d="M90 38c-3 13-12 22-24 27"/>
+    <path d="M72 38c3 13 12 22 24 27"/>
+  </g>
+  <!-- Front bubble: the page's language (A) -->
+  <path d="M26 50h44a12 12 0 0 1 12 12v32a12 12 0 0 1-12 12H43l-17 14 2-14h-2a12 12 0 0 1-12-12V62a12 12 0 0 1 12-12z" fill="#ffffff"/>
+  <g fill="none" stroke="#0a5f52" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M35 96l13-32 13 32"/>
+    <path d="M40 85h16"/>
+  </g>
+</svg>
