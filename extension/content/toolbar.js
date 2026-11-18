@@ -134,7 +134,30 @@
     '  margin-top: 4px;',
     '  min-height: 0;',
     '}',
-    '.auto-indicator:empty { display: none; }'
+    '.auto-indicator:empty { display: none; }',
+
+    '.icon-btn:focus-visible, .action-btn:focus-visible { outline: 2px solid #0e7c6b; outline-offset: 2px; }',
+
+    '@media (prefers-color-scheme: dark) {',
+    '  .toolbar { color: #eceef3; }',
+    '  .icon-btn { background: #3cc7ad; color: #0b1a17; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }',
+    '  .icon-btn:hover { background: #5fd8c1; }',
+    '  .panel { background: #1d2027; box-shadow: 0 4px 16px rgba(0,0,0,0.55); }',
+    '  .lang-input { background: #17191e; color: #eceef3; border-color: #3a3e48; }',
+    '  .lang-input:focus { border-color: #3cc7ad; }',
+    '  .action-btn.translate { background: #3cc7ad; color: #0b1a17; }',
+    '  .action-btn.translate:hover { background: #5fd8c1; }',
+    '  .action-btn.translate:disabled { background: #2a5a52; color: #9fb8b3; }',
+    '  .action-btn.revert { background: #e05a5a; color: #fff; }',
+    '  .status-line { color: #a3a8b5; }',
+    '  .status-line.error { color: #f07a7a; }',
+    '  .auto-indicator { color: #3cc7ad; }',
+    '  .icon-btn:focus-visible, .action-btn:focus-visible { outline-color: #3cc7ad; }',
+    '}',
+
+    '@media (prefers-reduced-motion: reduce) {',
+    '  .icon-btn, .action-btn, .status-line { transition: none; }',
+    '}'
   ].join('\n');
 
   // Build DOM structure
@@ -151,7 +174,8 @@
   var langInput = document.createElement('input');
   langInput.className = 'lang-input';
   langInput.type = 'text';
-  langInput.placeholder = 'Language (e.g. de)';
+  langInput.placeholder = t('toolbarLanguagePlaceholder', undefined, 'Language (e.g. de)');
+  langInput.setAttribute('aria-label', t('popupTargetLanguage', undefined, 'Target language'));
   langInput.setAttribute('list', 'anyi18n-langs');
 
   var datalist = document.createElement('datalist');
@@ -159,7 +183,7 @@
 
   var actionBtn = document.createElement('button');
   actionBtn.className = 'action-btn translate';
-  actionBtn.textContent = 'Translate';
+  actionBtn.textContent = t('actionTranslate', undefined, 'Translate');
 
   panelRow.appendChild(langInput);
   panelRow.appendChild(datalist);
@@ -179,7 +203,8 @@
   var iconBtn = document.createElement('button');
   iconBtn.className = 'icon-btn';
   iconBtn.textContent = '\uD83C\uDF10'; // globe emoji
-  iconBtn.title = 'any-i18n toolbar';
+  iconBtn.title = t('toolbarTitle', undefined, 'any-i18n toolbar');
+  iconBtn.setAttribute('aria-label', iconBtn.title);
 
   toolbar.appendChild(panel);
   toolbar.appendChild(iconBtn);
@@ -206,11 +231,11 @@
 
   function updateButton() {
     if (isTranslated) {
-      actionBtn.textContent = 'Revert';
+      actionBtn.textContent = t('actionRevert', undefined, 'Revert');
       actionBtn.className = 'action-btn revert';
       actionBtn.disabled = false;
     } else {
-      actionBtn.textContent = 'Translate';
+      actionBtn.textContent = t('actionTranslate', undefined, 'Translate');
       actionBtn.className = 'action-btn translate';
       actionBtn.disabled = false;
     }
@@ -234,7 +259,7 @@
     var domain = getDomain(window.location.href);
     StorageManager.getAutoTranslate(domain).then(function(config) {
       if (config && config.enabled && config.language) {
-        autoIndicator.textContent = 'Auto: ' + config.language;
+        autoIndicator.textContent = t('autoIndicator', [config.language], 'Auto: ' + config.language);
       } else {
         autoIndicator.textContent = '';
       }
@@ -260,43 +285,33 @@
       api.revert();
       isTranslated = false;
       updateButton();
-      showStatus('Translation reverted.', false);
+      showStatus(t('statusReverted', undefined, 'Translation reverted.'), false);
       return;
     }
 
     var lang = langInput.value.trim();
     if (!lang) {
-      showStatus('Enter a language code first.', true);
+      showStatus(t('errorNoLanguage', undefined, 'Enter a language first.'), true);
       return;
     }
 
     actionBtn.disabled = true;
-    actionBtn.textContent = 'Scanning...';
+    actionBtn.textContent = t('statusScanning', undefined, 'Scanning…');
 
-    // Ensure page is scanned
-    var keys = api.getKeys();
-    if (!keys || Object.keys(keys).length === 0) {
-      api.scan();
-      keys = api.getKeys();
-    }
-
-    if (!keys || Object.keys(keys).length === 0) {
-      showStatus('No translatable text found.', true);
-      updateButton();
-      return;
-    }
-
-    actionBtn.textContent = 'Translating...';
-
-    var domain = getDomain(window.location.href);
-
-    // Fire translate request to background (result comes via storage.onChanged)
-    browser.runtime.sendMessage({
-      type: MESSAGES.TRANSLATE_KEYS,
-      keys: keys,
-      language: lang,
-      domain: domain,
-      source: 'toolbar'
+    // Scan, apply stored translations and request the missing ones (results via storage.onChanged)
+    api.translatePage(lang, 'toolbar').then(function(result) {
+      if (!result || !result.keyCount) {
+        showStatus(t('errorNoText', undefined, 'No translatable text found on this page.'), true);
+        updateButton();
+        return;
+      }
+      if (result.requested === 0) {
+        isTranslated = true;
+        updateButton();
+        showStatus(t('statusFromCache', [String(result.stored)]), false);
+        return;
+      }
+      actionBtn.textContent = t('statusTranslating', undefined, 'Translating…');
     });
   });
 
@@ -306,15 +321,16 @@
     var result = changes._translateResult.newValue;
     if (!result) return;
 
-    // Only process toolbar-initiated results
+    // Only process toolbar-initiated results for this site (storage is shared by all tabs)
     if (result.source !== 'toolbar') return;
+    if (result.domain && result.domain !== getDomain(window.location.href)) return;
 
     // Handle partial (streaming) results
     if (result.partial) {
       var soFar = Object.keys(result.translations || {}).length;
       actionBtn.disabled = true;
-      actionBtn.textContent = 'Translating...';
-      showStatus('Translating... ' + soFar + ' keys so far', false);
+      actionBtn.textContent = t('statusTranslating', undefined, 'Translating…');
+      showStatus(t('statusProgress', [String(soFar)]), false);
 
       // Progressively apply translations
       var lang = langInput.value.trim();
@@ -333,10 +349,10 @@
 
     if (result.success) {
       var lang = langInput.value.trim();
-      var msg = 'Translated ' + (result.translated || 0) + ' keys';
-      if (result.cached > 0) {
-        msg += ' (' + result.cached + ' cached)';
-      }
+      var parts = [t('statusTranslatedCount', [String(result.translated || 0)])];
+      if (result.cached > 0) parts.push(t('statusFromCache', [String(result.cached)]));
+      if (result.failed > 0) parts.push(t('statusFailedCount', [String(result.failed)]));
+      var msg = parts.join(', ');
 
       // Auto-apply
       api.apply(lang).then(function(applyResult) {
@@ -345,12 +361,12 @@
           updateButton();
           showStatus(msg, false);
         } else {
-          showStatus(applyResult && applyResult.error ? applyResult.error : 'Apply failed.', true);
+          showStatus(t('errorApplyFailed', undefined, 'Applying the translation failed.'), true);
           updateButton();
         }
       });
     } else {
-      showStatus(result.error || 'Translation failed.', true);
+      showStatus(result.error || t('statusTranslateFailed', undefined, 'Translation failed.'), true);
       updateButton();
     }
   });

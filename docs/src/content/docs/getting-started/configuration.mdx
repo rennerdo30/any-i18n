@@ -98,38 +98,40 @@ Deleting the database file is a safe way to reset — it is recreated on the nex
 
 ## Extension
 
-The extension has no settings page. Behaviour is controlled by constants in
-`extension/shared/constants.js` and by per-domain state in `browser.storage.local`.
+Providers, models, API keys, batching, image translation and on-page behaviour are set on the
+extension's settings page; see [Translation Providers](/any-i18n/guides/providers/). Lower-level
+behaviour is controlled by constants in `extension/shared/constants.js`, and per-domain state lives
+in `browser.storage.local`.
 
 | Constant | Default | Effect |
 | --- | --- | --- |
-| `TRANSLATION_SERVER_URL` | `http://localhost:39418` | Base URL of the translation server. |
 | `TOOLBAR_ENABLED` | `true` | Whether the floating in-page toolbar is injected. |
 | `MIN_TEXT_LENGTH` | `2` | Strings shorter than this are never collected. |
-| `SKIP_TAGS` | `SCRIPT`, `STYLE`, `NOSCRIPT`, `IFRAME`, `SVG`, `META`, `LINK`, `HEAD`, `TITLE` | Elements whose subtrees are ignored. |
+| `SKIP_TAGS` | `SCRIPT`, `STYLE`, `NOSCRIPT`, `IFRAME`, `SVG`, `META`, `LINK`, `HEAD`, `TITLE`, `TEXTAREA` | Elements whose subtrees are ignored. |
 | `TRANSLATABLE_INPUT_TYPES` | `submit`, `button`, `reset` | Input types whose `value` attribute is treated as UI text. |
-| `DEFAULT_SETTINGS` | `enabled: true`, `autoScan: true`, `highlightTranslated: false` | Written to storage on first install. |
+| `DEFAULT_SETTINGS` | `enabled: true`, `autoScan: true` | Written to storage on first install. |
+| `DYNAMIC_TRANSLATE_DELAY_MS` | `800` | Wait after DOM changes before requesting translations for new text. |
+| `HOVER_DELAY_MS` | `350` | Delay before the original-text tooltip appears. |
 
-<Aside type="caution" title="Changing the server URL">
-  `TRANSLATION_SERVER_URL` appears in `extension/shared/constants.js` **and** in
-  `extension/background/service-worker.js` (the service worker cannot share content-script globals),
-  and the host is also listed in `host_permissions` in `extension/manifest.json`. Change all three,
-  then reload the extension.
-</Aside>
+The translation server URL is a normal setting now: choose **any-i18n server** on the settings page
+and edit its endpoint.
 
 ### Per-domain state in storage
 
 | Storage key | Shape | Meaning |
 | --- | --- | --- |
-| `settings` | `{ enabled, autoScan, highlightTranslated }` | Global behaviour flags. |
+| `settings` | `{ enabled, autoScan }` | Global behaviour flags. |
+| `providerSettings` | `{ provider, urls, models, apiKeys, batchSize, parallel, ocrMode, ocrLanguages, vision…, showOriginalOnHover, highlightTranslated }` | Settings page values; per-provider maps are keyed by provider id. |
+| `lastLanguage` | `"de"` | Language used by the context menu when the site has no auto-translate entry. |
+| `imageCache` | `{ cacheKey: { extractedText, translation, ts } }` | Image translation results (newest 200). |
 | `translations` | `{ domain: { lang: { key: text } } }` | All known translations. |
 | `domainKeys` | `{ domain: { key: sourceText } }` | Last scan result per domain. |
 | `autoTranslate` | `{ domain: { language, enabled } }` | Domains that translate themselves on load. |
-| `_translateResult` | `{ success, translations, cached, translated, partial, source }` | Transient channel for server results; removed once final. |
+| `_translateResult` | `{ success, translations, cached, translated, failed, partial, source, domain, language }` | Transient channel for translation progress; removed once final. |
 
 Turning on **Auto-translate this site** in the popup writes an `autoTranslate` entry for the current
-hostname. On every later visit the content script scans the page, applies whatever is cached, and
-asks the server for the rest — no clicks required.
+hostname. On every later visit the content script scans the page, applies whatever is stored, and
+asks the provider for the rest — no clicks required.
 
 ## CLI
 

@@ -40,6 +40,12 @@ var TextReplacer = {
       '[data-anyi18n] > * {',
       '  overflow-wrap: break-word !important;',
       '  word-break: break-word !important;',
+      '}',
+      // Optional marker for translated text (settings: "Underline translated text")
+      'html.anyi18n-highlight [data-anyi18n] {',
+      '  text-decoration: underline dashed rgba(14, 124, 107, 0.75) !important;',
+      '  text-decoration-thickness: 1px !important;',
+      '  text-underline-offset: 3px !important;',
       '}'
     ].join('\n');
     (document.head || document.documentElement).appendChild(style);
@@ -74,13 +80,14 @@ var TextReplacer = {
           var existing = this._translatedAttrs.get(entry.node) || {};
           if (existing[entry.attr] === translated) continue;
 
-          // Save original attribute value
+          // Save original attribute value (again if the page changed it since)
           if (!this._attrOriginals.has(entry.node)) {
             this._attrOriginals.set(entry.node, new Map());
           }
           var attrMap = this._attrOriginals.get(entry.node);
-          if (!attrMap.has(entry.attr)) {
-            attrMap.set(entry.attr, entry.node.getAttribute(entry.attr));
+          var currentValue = entry.node.getAttribute(entry.attr);
+          if (!attrMap.has(entry.attr) || existing[entry.attr] !== currentValue) {
+            attrMap.set(entry.attr, currentValue);
           }
 
           entry.node.setAttribute(entry.attr, translated);
@@ -92,7 +99,8 @@ var TextReplacer = {
           // Text node translation
           if (this._translated.get(entry.node) === translated) continue;
 
-          if (!this._originals.has(entry.node)) {
+          // Save the original (again if the page replaced our translation with new text)
+          if (!this._originals.has(entry.node) || this._translated.get(entry.node) !== entry.node.textContent) {
             this._originals.set(entry.node, entry.node.textContent);
           }
           entry.node.textContent = translated;
@@ -110,6 +118,48 @@ var TextReplacer = {
     if (hasTranslations) {
       this._ensureStyles();
     }
+  },
+
+  /**
+   * Text a node had before we translated it. Returns the current text for nodes we did not
+   * translate, or whose text the page has changed since.
+   */
+  originalTextFor: function(node) {
+    var current = node.textContent;
+    if (this._originals.has(node) && this._translated.get(node) === current) {
+      return this._originals.get(node);
+    }
+    return current;
+  },
+
+  /**
+   * Attribute value an element had before we translated it (see originalTextFor).
+   */
+  originalAttrFor: function(element, attrName) {
+    var current = element.getAttribute(attrName);
+    var translated = this._translatedAttrs.get(element);
+    var originals = this._attrOriginals.get(element);
+    if (translated && originals && originals.has(attrName) && translated[attrName] === current) {
+      return originals.get(attrName);
+    }
+    return current;
+  },
+
+  /**
+   * Original texts of the translated text nodes directly inside an element (for the hover tooltip).
+   */
+  originalsInside: function(element) {
+    var texts = [];
+    var children = element.childNodes;
+    for (var i = 0; i < children.length; i++) {
+      var child = children[i];
+      if (child.nodeType === Node.TEXT_NODE && this._originals.has(child) &&
+          this._translated.get(child) === child.textContent) {
+        var original = normalizeText(this._originals.get(child));
+        if (original) texts.push(original);
+      }
+    }
+    return texts;
   },
 
   /**

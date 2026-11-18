@@ -29,6 +29,7 @@ export default defineConfig({
           items: [
             { label: "Architecture", slug: "guides/architecture" },
             { label: "Browser Extension", slug: "guides/extension" },
+            { label: "Translation Providers", slug: "guides/providers" },
             { label: "Translation Server", slug: "guides/server" },
             { label: "CLI", slug: "guides/cli" },
             { label: "File Formats", slug: "guides/file-formats" },

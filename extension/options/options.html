@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>any-i18n settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <main class="page">
+    <header class="page-header">
+      <img src="../icons/icon-48.png" width="32" height="32" alt="">
+      <h1 data-i18n="optionsTitle">any-i18n settings</h1>
+      <span id="saved" class="saved" role="status" aria-live="polite"></span>
+    </header>
+
+    <section class="card" aria-labelledby="provider-heading">
+      <h2 id="provider-heading" data-i18n="optionsProviderHeading">Translation provider</h2>
+      <p class="hint" data-i18n="optionsProviderHint">Local providers keep page text on your machine. Cloud providers send it to the service you configure.</p>
+
+      <div class="field">
+        <label for="provider" data-i18n="optionsProviderLabel">Provider</label>
+        <select id="provider">
+          <option value="lmstudio" data-i18n="providerLmstudio">LM Studio</option>
+          <option value="ollama" data-i18n="providerOllama">Ollama</option>
+          <option value="openai" data-i18n="providerOpenai">OpenAI compatible</option>
+          <option value="deepseek" data-i18n="providerDeepseek">DeepSeek</option>
+          <option value="server" data-i18n="providerServer">any-i18n server</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="url" data-i18n="optionsUrlLabel">Endpoint URL</label>
+        <input type="url" id="url" spellcheck="false" autocomplete="off">
+        <p class="hint" id="url-hint" data-i18n="optionsUrlHint"></p>
+        <p class="hint" id="server-hint" data-i18n="optionsServerHint" hidden></p>
+      </div>
+
+      <div class="field" data-for="direct">
+        <label for="model" data-i18n="optionsModelLabel">Model</label>
+        <div class="row">
+          <input type="text" id="model" list="model-options" spellcheck="false" autocomplete="off">
+          <datalist id="model-options"></datalist>
+          <button type="button" id="refresh-models" class="btn btn-ghost" data-i18n="actionRefreshModels">Load models</button>
+        </div>
+        <p class="hint" data-i18n="optionsModelHint"></p>
+      </div>
+
+      <div class="field" data-for="key">
+        <label for="api-key" data-i18n="optionsApiKeyLabel">API key</label>
+        <div class="row">
+          <input type="password" id="api-key" spellcheck="false" autocomplete="off">
+          <button type="button" id="toggle-key" class="btn btn-ghost" data-i18n="actionShow">Show</button>
+        </div>
+        <p class="hint" data-i18n="optionsApiKeyHint"></p>
+      </div>
+
+      <div class="field-pair" data-for="direct">
+        <div class="field">
+          <label for="batch-size" data-i18n="optionsBatchLabel">Strings per request</label>
+          <input type="number" id="batch-size" min="1" max="50" step="1">
+        </div>
+        <div class="field">
+          <label for="parallel" data-i18n="optionsParallelLabel">Parallel requests</label>
+          <input type="number" id="parallel" min="1" max="10" step="1">
+        </div>
+      </div>
+      <p class="hint" data-for="direct" data-i18n="optionsExecutionHint"></p>
+
+      <div class="row actions">
+        <button type="button" id="test" class="btn btn-primary" data-i18n="actionTestConnection">Test connection</button>
+        <span id="test-result" class="result" role="status" aria-live="polite"></span>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="image-heading">
+      <h2 id="image-heading" data-i18n="optionsImageHeading">Image translation</h2>
+      <p class="hint" data-i18n="optionsImageHint"></p>
+
+      <fieldset class="choices">
+        <label class="choice">
+          <input type="radio" name="ocr-mode" value="builtin">
+          <span data-i18n="optionsOcrBuiltin">Built-in OCR</span>
+        </label>
+        <label class="choice">
+          <input type="radio" name="ocr-mode" value="vision">
+          <span data-i18n="optionsOcrVision">Vision model</span>
+        </label>
+      </fieldset>
+
+      <div class="field" data-for="builtin">
+        <label for="ocr-languages" data-i18n="optionsOcrLanguagesLabel">OCR languages</label>
+        <input type="text" id="ocr-languages" spellcheck="false" autocomplete="off" placeholder="eng">
+        <p class="hint" data-i18n="optionsOcrLanguagesHint"></p>
+      </div>
+
+      <div data-for="vision">
+        <div class="field">
+          <label for="vision-url" data-i18n="optionsVisionUrlLabel">Vision endpoint URL</label>
+          <input type="url" id="vision-url" spellcheck="false" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="vision-model" data-i18n="optionsVisionModelLabel">Vision model</label>
+          <input type="text" id="vision-model" spellcheck="false" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="vision-key" data-i18n="optionsVisionKeyLabel">Vision API key (optional)</label>
+          <input type="password" id="vision-key" spellcheck="false" autocomplete="off">
+        </div>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="page-heading">
+      <h2 id="page-heading" data-i18n="optionsPageHeading">On the page</h2>
+      <label class="choice">
+        <input type="checkbox" id="show-original">
+        <span data-i18n="optionsShowOriginal">Show the original text when hovering translated text</span>
+      </label>
+      <label class="choice">
+        <input type="checkbox" id="highlight">
+        <span data-i18n="optionsHighlight">Underline translated text</span>
+      </label>
+    </section>
+
+    <section class="card" aria-labelledby="data-heading">
+      <h2 id="data-heading" data-i18n="optionsDataHeading">Stored translations</h2>
+      <p class="hint" data-i18n="optionsDataHint"></p>
+      <div class="row actions">
+        <span id="cache-stats" class="stats"></span>
+        <button type="button" id="clear-cache" class="btn btn-danger" data-i18n="actionClearCache">Delete all translations</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="../shared/i18n.js"></script>
+  <script src="../shared/providers.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 {
   "name": "any-i18n",
-  "version": "1.0.0",
-  "description": "Add multilanguage i18n support to any website",
+  "version": "2.0.0",
+  "description": "Translate any website in place with a local or hosted AI model, and keep the translations as reusable keys",
   "license": "MIT",
   "author": "rennerdo30",
   "repository": {
@@ -19,13 +19,20 @@
     "browser-extension",
     "webextension",
     "manifest-v3",
-    "localization"
+    "localization",
+    "ai",
+    "llm",
+    "ollama",
+    "lm-studio",
+    "ocr"
   ],
   "scripts": {
     "build": "node scripts/build.js",
     "build:chrome": "node scripts/build.js --browser chrome",
     "build:firefox": "node scripts/build.js --browser firefox",
     "build:edge": "node scripts/build.js --browser edge",
+    "test": "node --test \"tests/**/*.test.mjs\"",
+    "check": "node scripts/check.js",
     "install:docs": "cd docs && npm install",
     "docs:dev": "cd docs && npm run dev",
     "docs:build": "cd docs && npm run build",

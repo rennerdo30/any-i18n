@@ -48,9 +48,20 @@ for (const browser of targetBrowsers) {
       manifest.browser_specific_settings = {
         gecko: {
           id: 'any-i18n@extension',
-          strict_min_version: '109.0'
+          strict_min_version: '128.0'
         }
       };
+      // Firefox runs MV3 background code as an event page, not a service worker, and has no
+      // offscreen documents (the built-in OCR is Chrome/Edge only; vision models still work).
+      manifest.background = {
+        scripts: ['shared/providers.js', 'background/service-worker.js']
+      };
+      manifest.permissions = manifest.permissions.filter(function(permission) {
+        return permission !== 'offscreen';
+      });
+      delete manifest.minimum_chrome_version;
+      rmSync(join(outDir, 'offscreen'), { recursive: true });
+      rmSync(join(outDir, 'vendor'), { recursive: true });
       writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
     }
   }

@@ -1,25 +1,52 @@
 ---
 title: Browser Extension
-description: Using the popup, the floating toolbar, auto-translate, and import/export.
+description: Using the popup, the settings page, the context menu, the floating toolbar, auto-translate, and import/export.
 ---
 
 import { Steps, Aside } from "@astrojs/starlight/components";
 
 ## The popup
 
-Click the toolbar icon to open the popup. The header shows the current hostname and a badge with the
-number of keys collected on this page.
+Click the toolbar icon to open the popup. The header shows the current hostname, a badge with the
+number of keys collected on this page, and a gear button that opens the settings page. The line below
+names the provider and model in use (click it to change them).
 
 | Control | What it does |
 | --- | --- |
 | **Target Language** | Free-text field with autocomplete from the languages already stored for this domain. Any code the provider understands works (`de`, `fr`, `es`, …). |
-| **Translate** | Scans the page if needed, then sends unknown keys to the translation server. Results are stored and applied as they stream in. |
+| **Translate** | Scans the page if needed, then sends keys without a stored translation to the selected [provider](/any-i18n/guides/providers/). Results are stored and applied batch by batch. |
 | **Auto-translate this site** | Remembers the hostname and language, and translates the page automatically on later visits. |
 | **Scan Page** | Re-walks the DOM and refreshes the key set for this domain. |
 | **Apply / Revert** | Applies translations already in storage for the chosen language, or restores every original string. |
 | **Export Keys** | Downloads `_keys.json` containing the current key set. |
 | **Import** | Loads a translation JSON file into storage. |
 | **Scanned Keys** | Expandable list of the collected keys and their source text. |
+
+## The settings page
+
+The gear button in the popup (or **Extension options** in the browser's extension menu) opens the
+settings page. Changes are saved immediately.
+
+| Section | Settings |
+| --- | --- |
+| Translation provider | Provider, endpoint URL, model (with suggestions from the provider), API key, strings per request, parallel requests, **Test connection** |
+| Image translation | Built-in OCR with its languages, or a vision-model endpoint, model and key |
+| On the page | Show the original text on hover; underline translated text |
+| Stored translations | Totals, and **Delete all translations** |
+
+The UI follows the browser language (English or German) and the system light or dark theme.
+
+## Context menu
+
+- **Translate page** translates the page into the site's auto-translate language, or else the
+  language used last.
+- **Translate image text** (on images) reads and translates the text in the image; see
+  [Image translation](/any-i18n/guides/providers/#image-translation).
+
+## Comparing with the original
+
+Hovering translated text for a moment shows the original in a tooltip. Turn on **Underline translated
+text** to mark everything that was translated with a dashed underline.
 
 ## The floating toolbar
 
@@ -34,18 +61,18 @@ The language field is pre-filled from `navigator.language`, so the common case i
 
 ## Typical flows
 
-### Server-backed (fastest)
+### With a model
 
 <Steps>
-1. Start the translation server (`./server/start.sh`).
-2. Open the page, click the toolbar circle or the extension popup.
+1. Pick a provider on the settings page and press **Test connection**.
+2. Open the page, click the toolbar circle or the extension popup (or right-click → **Translate page**).
 3. Enter a language code and press **Translate**.
-4. Text is replaced batch by batch as the server streams results back.
+4. Text is replaced batch by batch as results arrive.
 5. Press **Revert** to restore the page.
 </Steps>
 
-Anything the server has translated before comes back from its SQLite cache immediately — the
-`cached` event of the SSE stream is emitted before any provider call.
+Strings the site already has a translation for are applied immediately and never sent again. With
+the any-i18n server as provider, the server's SQLite cache adds a second, cross-site layer.
 
 ### Fully manual (no server)
 
@@ -92,7 +119,7 @@ next load the content script:
 
 1. scans the page,
 2. applies whatever is already cached for that language,
-3. sends the still-untranslated keys to the server, and
+3. sends the still-untranslated keys to the provider, and
 4. applies each partial result as it arrives.
 
 Changing the language field while the toggle is on updates the stored language.
@@ -105,9 +132,12 @@ Changing the language field while the toggle is on updates the stored language.
 - `alt` on `<img>`
 - `value` on `<input type="submit|button|reset">`
 
-Ignored: `SCRIPT`, `STYLE`, `NOSCRIPT`, `IFRAME`, `SVG`, `META`, `LINK`, `HEAD`, `TITLE`, any
-subtree marked `translate="no"`, attributes of `contenteditable` elements, and strings made only of
-digits, punctuation, or symbols.
+Ignored: `SCRIPT`, `STYLE`, `NOSCRIPT`, `IFRAME`, `SVG`, `META`, `LINK`, `HEAD`, `TITLE`,
+`TEXTAREA`, any subtree marked `translate="no"`, editable (`contenteditable`) content, and strings
+made only of digits, punctuation, or symbols.
+
+Text added after the page was translated is picked up by the `MutationObserver`, and its keys are
+requested from the provider about a second later (each key once per page).
 
 <Aside type="tip" title="Opting a region out">
   Because the scanner honours `translate="no"`, adding that attribute to an element in a page you do
@@ -119,6 +149,7 @@ digits, punctuation, or symbols.
 Translations are usually longer than the source. Two mechanisms limit the damage:
 
 - the server annotates each string with a target maximum length and asks for concise phrasing
+  (server provider only)
 - translated elements receive `data-anyi18n` and a defensive stylesheet with `overflow-wrap`,
   `word-break`, `white-space: normal`, and `min-width: 0`
 
@@ -126,7 +157,14 @@ Reverting removes the marker attributes again.
 
 ## Permissions
 
-`storage`, `activeTab`, and `scripting`, plus `host_permissions` for
-`http://localhost:39418/*`. Content scripts match `<all_urls>` at `document_idle` — they need to run
-everywhere by design, but the only network request the extension ever makes goes to the translation
-server on your own machine.
+| Permission | Why |
+| --- | --- |
+| `storage` | Settings, stored translations, auto-translate sites |
+| `activeTab`, `scripting` | Inject the content scripts into tabs opened before installation |
+| `contextMenus` | *Translate page* and *Translate image text* |
+| `offscreen` | Run the bundled OCR engine (Chrome and Edge) |
+| `http://localhost/*`, `http://127.0.0.1/*`, `https://*/*` | Reach local and hosted providers, and load images for OCR |
+| `http://*/*` (optional) | Plain-HTTP providers on other machines; requested only when you test such an endpoint |
+
+Content scripts run on every `http` and `https` page at `document_idle`. Page text is sent only to the
+provider you configured.

@@ -1,9 +1,9 @@
 ---
 title: any-i18n
-description: Add multilanguage support to any website at runtime — no access to the site's source code required.
+description: Translate any website in place with a local or hosted AI model, and keep the translations as reusable keys.
 template: splash
 hero:
-  tagline: Scan any page for translatable text, generate deterministic keys, translate them, and swap the text back in place — live.
+  tagline: Scan any page, give every string a deterministic key, translate it with LM Studio, Ollama, OpenAI, DeepSeek or your own server, and swap the text in place.
   actions:
     - text: Get Started
       link: /any-i18n/getting-started/installation/
@@ -21,8 +21,9 @@ import { Card, CardGrid } from "@astrojs/starlight/components";
 **any-i18n** retrofits internationalization onto websites that never had it. A Manifest V3 browser
 extension walks the live DOM with a `TreeWalker`, collects every visible text node and every
 translatable attribute, and turns each string into a deterministic key. Those keys can be exported,
-translated (by a local server, by the CLI, or by hand), imported back, and applied — replacing text
-in place while keeping the originals so everything can be reverted.
+translated (directly by an AI model of your choice, by the optional local server, by the CLI, or by
+hand), imported back, and applied, replacing text in place while keeping the originals so everything
+can be reverted.
 
 Nothing is patched into the website itself: no build step, no source access, no server-side changes.
 
@@ -52,6 +53,14 @@ every later visit, and the whole translation set is a plain JSON file you own.
     A `MutationObserver` (50 ms debounce) translates content added later, and `pushState`,
     `replaceState`, `popstate`, and `hashchange` are intercepted to handle client-side navigation.
   </Card>
+  <Card title="Bring your own model" icon="puzzle">
+    LM Studio, Ollama, OpenAI, DeepSeek, OpenRouter or any OpenAI-compatible API, called directly
+    from the extension. Translations are stored per site, so revisits cost no API calls.
+  </Card>
+  <Card title="Image translation" icon="document">
+    Right-click an image: the bundled Tesseract OCR (or a vision model) reads the text and your
+    provider translates it.
+  </Card>
   <Card title="Local translation server" icon="setting">
     A FastAPI service batches keys to a configurable LLM backend, streams results back over SSE,
     and caches every translation in SQLite so repeat visits cost nothing.
@@ -66,18 +75,19 @@ every later visit, and the whole translation set is a plain JSON file you own.
 
 | Component | Location | Role |
 | --- | --- | --- |
-| Browser extension | `extension/` | Manifest V3, plain JS, no bundler. Scans, applies, and reverts translations; popup and in-page toolbar UI. |
-| Translation server | `server/` | FastAPI + SQLite. `POST /api/translate` and a streaming `POST /api/translate/stream`, plus health, stats, and language endpoints. |
+| Browser extension | `extension/` | Manifest V3, plain JS, no bundler. Scans, translates through the chosen provider, applies and reverts; popup, settings page and in-page toolbar. |
+| Translation server (optional) | `server/` | FastAPI + SQLite. `POST /api/translate` and a streaming `POST /api/translate/stream`, plus health, stats, and language endpoints. |
 | CLI | `cli/` | Node 22.12+ ESM tool built on `commander` for translating, validating, and bundling translation JSON. |
 
 ## How a page gets translated
 
 1. **Scan** — the content script walks `document.body` and collects text nodes and attributes.
 2. **Key generation** — each normalized string becomes `firstthreewords_fnv1ahash`.
-3. **Translate** — the extension posts unknown keys to the local server, or you export the keys and
-   translate them with the CLI or by hand.
+3. **Translate** — the extension sends keys the site has no translation for to the selected
+   provider (or the local server), or you export the keys and translate them with the CLI or by hand.
 4. **Apply** — matching keys are written back into the DOM; originals are remembered.
-5. **Stay applied** — the `MutationObserver` translates new nodes as the page changes.
+5. **Stay applied** — the `MutationObserver` applies stored translations to new nodes and requests
+   the missing ones as the page changes.
 6. **Revert** — one action restores every original text node and attribute value.
 
 Continue with [Installation](/any-i18n/getting-started/installation/), then

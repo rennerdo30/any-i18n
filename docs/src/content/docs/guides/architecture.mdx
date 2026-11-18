@@ -10,10 +10,14 @@ import { Aside, FileTree } from "@astrojs/starlight/components";
 <FileTree>
 - extension/ Manifest V3 extension, plain JS, no bundler
   - manifest.json declares content script load order
-  - shared/ constants.js, utils.js, storage.js
-  - content/ key-generator.js, dom-scanner.js, text-replacer.js, mutation-handler.js, content-script.js, toolbar.js
-  - background/service-worker.js server calls, import, lifecycle
-  - popup/ popup.html, popup.js, popup.css, browser-shim.js
+  - _locales/ UI strings (en, de)
+  - shared/ constants.js, utils.js, storage.js, providers.js, i18n.js
+  - content/ key-generator.js, dom-scanner.js, text-replacer.js, mutation-handler.js, page-ui.js, content-script.js, toolbar.js
+  - background/service-worker.js providers, server stream, import, context menu, image translation
+  - offscreen/ offscreen document running the bundled Tesseract OCR
+  - options/ settings page
+  - popup/ popup.html, popup.js, popup.css
+  - vendor/tesseract/ Tesseract.js (Apache-2.0)
   - translations/manifest.json index of bundled translation files
   - icons/
 - server/ FastAPI translation service
@@ -26,7 +30,8 @@ import { Aside, FileTree } from "@astrojs/starlight/components";
 - cli/ Node CLI (ESM)
   - bin/any-i18n.js commander entry point
   - src/commands/ translate.js, validate.js, bundle.js
-- scripts/build.js per-browser packaging
+- scripts/ build.js (per-browser packaging), check.js (static checks)
+- tests/ unit tests for shared/providers.js
 - docs/ this documentation site
 </FileTree>
 
@@ -46,13 +51,18 @@ import { Aside, FileTree } from "@astrojs/starlight/components";
                                 └────────│ service      │
                                          │ worker       │
                                          └──────┬───────┘
-                                     POST /api/translate/stream
-                                                ▼
-                                    ┌───────────────────────┐
-                                    │ FastAPI server        │
-                                    │ SQLite cache + LLM    │
-                                    └───────────────────────┘
+                         ┌──────────────────────┴──────────────────────┐
+              POST /v1/chat/completions                  POST /api/translate/stream
+                         ▼                                              ▼
+           ┌───────────────────────────┐                ┌───────────────────────┐
+           │ LM Studio, Ollama, OpenAI │                │ FastAPI server        │
+           │ DeepSeek, OpenRouter, …   │                │ SQLite cache + LLM    │
+           └───────────────────────────┘                └───────────────────────┘
 ```
+
+The provider is chosen on the settings page. Direct providers receive batches as JSON arrays and
+must answer with arrays of the same length; see
+[Translation Providers](/any-i18n/guides/providers/#how-a-batch-is-translated).
 
 The CLI is an offline alternative to that loop: export keys from the popup, translate the file,
 validate it, bundle it into `extension/translations/`, and the service worker indexes it on install.
@@ -64,7 +74,7 @@ validate it, bundle it into `extension/translations/`, and the service worker in
 Content scripts are listed in `manifest.json` and loaded in dependency order:
 `shared/constants.js`, `shared/utils.js`, `shared/storage.js`, then `content/key-generator.js`,
 `content/dom-scanner.js`, `content/text-replacer.js`, `content/mutation-handler.js`,
-`content/content-script.js`, `content/toolbar.js`. They share one global scope, which is why
+`content/page-ui.js`, `content/content-script.js`, `content/toolbar.js`. They share one global scope, which is why
 top-level declarations use `var`. Cross-browser access goes through a one-line shim:
 
 ```js
@@ -120,21 +130,24 @@ bookkeeping without touching the DOM — used after SPA navigation, when the old
 ### Dynamic pages
 
 `MutationHandler` observes `document.body` for `childList`, `subtree`, and `characterData` changes
-with a 50 ms debounce, and sets a `_processing` guard so the observer ignores the mutations caused by
-its own replacements.
+with a 50 ms debounce. After each pass it discards the records its own replacements produced
+(`takeRecords()`), so it does not trigger itself. While a language is active, keys found in new
+content that have no translation yet are requested after 800 ms, each key once per page.
 
 SPA navigation is detected by wrapping `history.pushState` and `history.replaceState` and listening
 for `popstate` and `hashchange`. On a URL change the content script resets its state and, after a
 200 ms delay for the new view to render, re-applies the previous language (same host) or checks the
 auto-translate configuration.
 
-### Long-running server calls
+### Long-running translation calls
 
 An LLM batch can outlive the message port between the popup and the service worker. Instead of
 answering the message, the worker replies `{ started: true }` and publishes progress by writing
 `_translateResult` to `browser.storage.local`; popup and content script both listen on
-`browser.storage.onChanged`. Streaming batches arrive with `partial: true` and are applied as they
-land, so text appears progressively; the final write clears the flag.
+`browser.storage.onChanged`. Batches arrive with `partial: true` and are applied as they land, so
+text appears progressively; the final write clears the flag. Each result names its `source`
+(`popup`, `toolbar`, `auto`, `page`), `domain` and `language`, so every listener only acts on its
+own requests.
 
 ## Server internals
 

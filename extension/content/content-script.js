@@ -7,6 +7,9 @@
 (function() {
   'use strict';
 
+  // The popup and the context menu inject the scripts again when they get no answer; never run twice.
+  if (window.__anyi18n) return;
+
   /** Current URL for SPA navigation detection */
   var currentUrl = window.location.href;
 
@@ -21,6 +24,12 @@
 
   /** The language currently being applied, if any */
   var activeLanguage = null;
+
+  /** Keys already requested from the provider for activeLanguage (never re-requested) */
+  var requestedKeys = new Set();
+
+  /** Timer for batching translation requests of dynamically added text */
+  var dynamicTimer = null;
 
   /**
    * Scan the page for translatable text nodes and generate keys.
@@ -59,6 +68,7 @@
 
       var textNodes = DomScanner.getTextNodes();
       TextReplacer.applyTranslations(textNodes, translations);
+      if (activeLanguage !== language) requestedKeys = new Set();
       activeLanguage = language;
 
       // Start mutation handler to auto-translate new content
@@ -77,7 +87,9 @@
   function revertTranslation() {
     TextReplacer.revert();
     MutationHandler.stop();
+    clearTimeout(dynamicTimer);
     activeLanguage = null;
+    requestedKeys = new Set();
 
     return { success: true };
   }
@@ -98,6 +110,76 @@
       }
 
       TextReplacer.applyTranslations(textNodes, translations);
+      scheduleDynamicTranslation(translations);
+    });
+  }
+
+  /**
+   * Request translations for text that appeared after the page was translated
+   * (single-page apps, infinite scroll, lazy loading). Each key is requested once.
+   */
+  function scheduleDynamicTranslation(translations) {
+    clearTimeout(dynamicTimer);
+    dynamicTimer = setTimeout(function() {
+      if (!activeLanguage) return;
+      var missing = {};
+      var count = 0;
+      Object.keys(collectedKeys).forEach(function(key) {
+        if (translations[key] || requestedKeys.has(key)) return;
+        missing[key] = collectedKeys[key];
+        count++;
+      });
+      if (count > 0) requestTranslation(missing, activeLanguage, 'page');
+    }, DYNAMIC_TRANSLATE_DELAY_MS);
+  }
+
+  /**
+   * Ask the background to translate keys; results arrive through storage.onChanged.
+   */
+  function requestTranslation(keys, language, source) {
+    Object.keys(keys).forEach(function(key) { requestedKeys.add(key); });
+    browser.runtime.sendMessage({
+      type: MESSAGES.TRANSLATE_KEYS,
+      keys: keys,
+      language: language,
+      domain: currentDomain,
+      source: source
+    }).catch(function() {
+      // Extension reloaded or updated: this page keeps its current state.
+    });
+  }
+
+  /**
+   * Scan, apply the translations this site already has, and request the missing ones.
+   */
+  function translatePage(language, source) {
+    scanPage();
+
+    return StorageManager.getTranslations(currentDomain, language).then(function(translations) {
+      if (translations && Object.keys(translations).length > 0) {
+        applyTranslation(language);
+      } else {
+        if (activeLanguage !== language) requestedKeys = new Set();
+        activeLanguage = language;
+      }
+
+      var untranslated = {};
+      var count = 0;
+      Object.keys(collectedKeys).forEach(function(key) {
+        if (translations && translations[key]) return;
+        untranslated[key] = collectedKeys[key];
+        count++;
+      });
+
+      if (count > 0) {
+        requestTranslation(untranslated, language, source);
+      }
+      return {
+        success: true,
+        requested: count,
+        keyCount: Object.keys(collectedKeys).length,
+        stored: Object.keys(collectedKeys).length - count
+      };
     });
   }
 
@@ -106,6 +188,7 @@
    */
   function resetState() {
     MutationHandler.stop();
+    clearTimeout(dynamicTimer);
     TextReplacer.reset();
     DomScanner.clear();
     collectedKeys = {};
@@ -147,38 +230,7 @@
   function checkAutoTranslate() {
     StorageManager.getAutoTranslate(currentDomain).then(function(config) {
       if (!config || !config.enabled || !config.language) return;
-
-      var language = config.language;
-
-      // Always scan the page for translatable keys
-      scanPage();
-
-      StorageManager.getTranslations(currentDomain, language).then(function(translations) {
-        // Apply whatever translations we already have
-        if (translations && Object.keys(translations).length > 0) {
-          applyTranslation(language);
-        }
-
-        // Check for keys that still need translation
-        var untranslated = {};
-        var keys = Object.keys(collectedKeys);
-        for (var i = 0; i < keys.length; i++) {
-          if (!translations || !translations[keys[i]]) {
-            untranslated[keys[i]] = collectedKeys[keys[i]];
-          }
-        }
-
-        // Request translations for any untranslated keys
-        if (Object.keys(untranslated).length > 0) {
-          browser.runtime.sendMessage({
-            type: MESSAGES.TRANSLATE_KEYS,
-            keys: untranslated,
-            language: language,
-            domain: currentDomain,
-            source: 'auto'
-          });
-        }
-      });
+      translatePage(config.language, 'auto');
     });
   }
 
@@ -202,37 +254,27 @@
   window.addEventListener('popstate', handleNavigation);
   window.addEventListener('hashchange', handleNavigation);
 
-  // --- Listen for auto-translate results from background ---
+  // --- Apply translation results for this site while their language is active ---
+  // Applying here (not only in the popup) keeps a translation going after the popup closes; a
+  // result that arrives after Revert is ignored because no language is active any more.
   browser.storage.onChanged.addListener(function(changes) {
     if (!changes._translateResult) return;
     var result = changes._translateResult.newValue;
     if (!result) return;
+    if (result.domain && result.domain !== currentDomain) return;
+    var ownRequest = result.source === 'auto' || result.source === 'page';
 
-    // Only process auto-translate results here
-    if (result.source !== 'auto') return;
-
-    // Handle partial (streaming) results — apply progressively
-    if (result.partial) {
-      if (result.success) {
-        StorageManager.getAutoTranslate(currentDomain).then(function(config) {
-          if (config && config.enabled && config.language) {
-            applyTranslation(config.language);
-          }
-        });
+    if (!result.partial) {
+      if (ownRequest) browser.storage.local.remove('_translateResult');
+      if (!result.success) {
+        // The popup and the toolbar report their own failures.
+        if (ownRequest) PageUi.notify(result.error || t('statusTranslateFailed', undefined, 'Translation failed.'), true);
+        return;
       }
-      return; // Don't clean up for partial results
     }
 
-    // Final result — clean up the flag
-    browser.storage.local.remove('_translateResult');
-
-    if (result.success) {
-      // Apply the translation
-      StorageManager.getAutoTranslate(currentDomain).then(function(config) {
-        if (config && config.enabled && config.language) {
-          applyTranslation(config.language);
-        }
-      });
+    if (result.success && result.language && activeLanguage === result.language) {
+      applyTranslation(result.language);
     }
   });
 
@@ -290,6 +332,20 @@
       case MESSAGES.EXPORT_KEYS:
         sendResponse(exportKeys());
         break;
+
+      case MESSAGES.TRANSLATE_PAGE:
+        translatePage(message.language, message.source || 'page').then(sendResponse);
+        return true; // Async response
+
+      case MESSAGES.IMAGE_TRANSLATION_STARTED:
+        PageUi.showImageLoading(message.srcUrl);
+        sendResponse({ success: true });
+        break;
+
+      case MESSAGES.IMAGE_TRANSLATION_RESULT:
+        PageUi.showImageResult(message);
+        sendResponse({ success: true });
+        break;
     }
   });
 
@@ -300,6 +356,7 @@
     revert: revertTranslation,
     getStatus: getStatus,
     getKeys: function() { return collectedKeys; },
+    translatePage: translatePage,
     handleNavigation: handleNavigation
   };
 
