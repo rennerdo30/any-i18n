@@ -195,6 +195,7 @@ npx any-i18n bundle --input ./translations --output ../extension/translations
 npm run check            # syntax, manifest paths, message keys in both locales
 npm test                 # unit tests (node --test)
 npm run build            # chrome, firefox, edge -> dist/<browser>/
+npm run icons            # re-render the PNG icons from the SVGs (needs rsvg-convert)
 ```
 
 The extension has no build step: load `extension/` directly. The Firefox build switches the

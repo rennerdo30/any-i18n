@@ -36,7 +36,8 @@
     "install:docs": "cd docs && npm install",
     "docs:dev": "cd docs && npm run dev",
     "docs:build": "cd docs && npm run build",
-    "docs:preview": "cd docs && npm run preview"
+    "docs:preview": "cd docs && npm run preview",
+    "icons": "rsvg-convert -w 16 -h 16 extension/icons/icon-16.svg -o extension/icons/icon-16.png && rsvg-convert -w 32 -h 32 extension/icons/icon-16.svg -o extension/icons/icon-32.png && rsvg-convert -w 48 -h 48 extension/icons/icon.svg -o extension/icons/icon-48.png && rsvg-convert -w 128 -h 128 extension/icons/icon.svg -o extension/icons/icon-128.png"
   },
   "type": "module"
 }
