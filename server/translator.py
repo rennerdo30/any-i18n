@@ -101,10 +101,14 @@ def _translate_openai_api(texts, language):
     client = openai.OpenAI(api_key=OPENAI_API_KEY)
     prompt = _build_prompt(texts, language)
     log.info("Calling OpenAI API (%s) for %d texts -> %s", OPENAI_MODEL, len(texts), language)
+    options = {}
+    # GPT-5 and o-series reasoning models only accept the default temperature.
+    if not re.match(r"^(gpt-5|o\d)", OPENAI_MODEL):
+        options["temperature"] = 0.1
     response = client.chat.completions.create(
         model=OPENAI_MODEL,
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.1
+        **options
     )
     return _parse_json_response(response.choices[0].message.content)
 

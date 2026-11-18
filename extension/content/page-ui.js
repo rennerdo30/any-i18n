@@ -21,6 +21,8 @@ var PageUi = (function() {
   var hoverTarget = null;
   var showOriginalOnHover = true;
   var imageOverlays = new Map(); // srcUrl -> overlay element
+  var progress = null;           // { el, bar, text, stop, timer }
+  var PROGRESS_DONE_MS = 2600;
 
   var STYLE = [
     ':host { all: initial; }',
@@ -53,8 +55,30 @@ var PageUi = (function() {
     '.close { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border: none; border-radius: 4px;',
     '  background: transparent; color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer; }',
     '.close:hover, .close:focus-visible { background: var(--border); color: var(--text); }',
+    '.progress { position: fixed; left: 50%; bottom: 20px; z-index: 2147483647; transform: translateX(-50%);',
+    '  display: flex; align-items: center; gap: 10px; min-width: 260px; max-width: calc(100vw - 32px);',
+    '  padding: 8px 8px 8px 14px; border: 1px solid var(--border); border-radius: 999px;',
+    '  background: var(--surface); color: var(--text); box-shadow: var(--shadow); overflow: hidden; }',
+    '.progress-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;',
+    '  font-variant-numeric: tabular-nums; }',
+    '.progress-bar { position: absolute; left: 0; bottom: 0; height: 3px; width: 0; background: var(--accent);',
+    '  transition: width 200ms ease-out; }',
+    '.progress.indeterminate .progress-bar { width: 30%; animation: slide 1.1s ease-in-out infinite; }',
+    '@keyframes slide { from { left: -30%; } to { left: 100%; } }',
+    '.progress.done .progress-bar { width: 100%; }',
+    '.progress .spinner { width: 14px; height: 14px; flex: none; border: 2px solid var(--border);',
+    '  border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }',
+    '.progress.done .spinner { border-color: var(--accent); animation: none; background: var(--accent); }',
+    '@keyframes spin { to { transform: rotate(360deg); } }',
+    '.stop { flex: none; padding: 4px 12px; border: 1px solid var(--border); border-radius: 999px;',
+    '  background: transparent; color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }',
+    '.stop:hover, .stop:focus-visible { border-color: var(--danger); color: var(--danger); }',
+    '.progress.done .stop { display: none; }',
+    '@media (prefers-reduced-motion: reduce) {',
+    '  .progress .spinner, .progress.indeterminate .progress-bar { animation: none; }',
+    '}',
     '@media (prefers-reduced-motion: no-preference) {',
-    '  .notice, .overlay { animation: appear 160ms ease-out; }',
+    '  .notice, .overlay, .progress { animation: appear 160ms ease-out; }',
     '  @keyframes appear { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }',
     '}'
   ].join('\n');
@@ -110,6 +134,72 @@ var PageUi = (function() {
     clearTimeout(noticeTimer);
     if (notice) notice.remove();
     notice = null;
+  }
+
+  // --- Translation progress pill ---
+
+  function languageLabel(language) {
+    var ui = (typeof browser !== 'undefined' && browser.i18n) ? browser.i18n.getUILanguage() : 'en';
+    return AnyI18nLanguages.name(language, ui);
+  }
+
+  /** Show (or update) the pill: "Translating to German · 12 / 40" with a Stop button. */
+  function showProgress(language, done, total, onStop) {
+    if (!progress) {
+      var el = document.createElement('div');
+      el.className = 'progress';
+      el.setAttribute('role', 'status');
+      el.setAttribute('aria-live', 'polite');
+      var spinner = document.createElement('span');
+      spinner.className = 'spinner';
+      spinner.setAttribute('aria-hidden', 'true');
+      var text = document.createElement('span');
+      text.className = 'progress-text';
+      var stop = document.createElement('button');
+      stop.className = 'stop';
+      stop.type = 'button';
+      stop.textContent = t('actionStop', undefined, 'Stop');
+      var bar = document.createElement('span');
+      bar.className = 'progress-bar';
+      el.appendChild(spinner);
+      el.appendChild(text);
+      el.appendChild(stop);
+      el.appendChild(bar);
+      layer().appendChild(el);
+      progress = { el: el, text: text, bar: bar, stop: stop, timer: null };
+    }
+    clearTimeout(progress.timer);
+    progress.el.classList.remove('done');
+    progress.stop.onclick = onStop || null;
+    progress.stop.hidden = !onStop;
+
+    var name = languageLabel(language);
+    if (total > 0) {
+      progress.el.classList.remove('indeterminate');
+      progress.text.textContent = t('progressTranslating', [name, String(Math.min(done, total)), String(total)],
+        'Translating to ' + name + ' · ' + done + ' / ' + total);
+      progress.bar.style.width = Math.round(Math.min(1, done / total) * 100) + '%';
+    } else {
+      progress.el.classList.add('indeterminate');
+      progress.text.textContent = t('progressStarting', [name], 'Translating to ' + name + '…');
+    }
+  }
+
+  /** Turn the pill into a short confirmation, then remove it. */
+  function finishProgress(message) {
+    if (!progress) return;
+    progress.el.classList.remove('indeterminate');
+    progress.el.classList.add('done');
+    progress.text.textContent = message;
+    clearTimeout(progress.timer);
+    progress.timer = setTimeout(hideProgress, PROGRESS_DONE_MS);
+  }
+
+  function hideProgress() {
+    if (!progress) return;
+    clearTimeout(progress.timer);
+    progress.el.remove();
+    progress = null;
   }
 
   // --- Original-text tooltip ---
@@ -252,6 +342,10 @@ var PageUi = (function() {
     notify: notify,
     showImageLoading: showImageLoading,
     showImageResult: showImageResult,
+    showProgress: showProgress,
+    finishProgress: finishProgress,
+    hideProgress: hideProgress,
+    languageLabel: languageLabel,
     hideTooltip: hideTooltip
   };
 })();

@@ -1,6 +1,6 @@
 {
   "name": "any-i18n",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Translate any website in place with a local or hosted AI model, and keep the translations as reusable keys",
   "license": "MIT",
   "author": "rennerdo30",

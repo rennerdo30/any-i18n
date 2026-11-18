@@ -15,8 +15,8 @@ configure them by exporting variables before starting the server.
 | `LLM_BACKEND` | `claude-cli` | Which provider to use. One of `claude-cli`, `gemini-cli`, `codex-cli`, `openai-api`, `anthropic-api`. |
 | `OPENAI_API_KEY` | *(empty)* | Credential for the `openai-api` backend. |
 | `ANTHROPIC_API_KEY` | *(empty)* | Credential for the `anthropic-api` backend. |
-| `OPENAI_MODEL` | `gpt-4o-mini` | Model id used by the `openai-api` backend. |
-| `ANTHROPIC_MODEL` | `claude-sonnet-4-20250514` | Model id used by the `anthropic-api` backend. |
+| `OPENAI_MODEL` | `gpt-5-mini` | Model id used by the `openai-api` backend. |
+| `ANTHROPIC_MODEL` | `claude-sonnet-5-5` | Model id used by the `anthropic-api` backend. |
 | `DB_PATH` | `server/translations.db` | SQLite file for the translation cache. |
 | `BATCH_SIZE` | `50` | Maximum number of strings sent in one request to the provider. |
 | `MAX_PARALLEL` | `5` | Maximum number of batches translated concurrently. |
@@ -50,16 +50,17 @@ matching key:
 ```bash
 export LLM_BACKEND=openai-api
 export OPENAI_API_KEY=...           # your own key
-export OPENAI_MODEL=gpt-4o-mini     # optional override
+export OPENAI_MODEL=gpt-5-mini      # optional override
 ```
 
 ```bash
 export LLM_BACKEND=anthropic-api
 export ANTHROPIC_API_KEY=...
-export ANTHROPIC_MODEL=claude-sonnet-4-20250514
+export ANTHROPIC_MODEL=claude-sonnet-5-5
 ```
 
-The OpenAI backend is called with `temperature=0.1`; the Anthropic backend with
+The OpenAI backend is called with `temperature=0.1`, except for GPT-5 and o-series models, which only
+accept their default temperature; the Anthropic backend with
 `max_tokens=4096`. An unknown `LLM_BACKEND` value raises `ValueError: Unknown LLM_BACKEND: ...` on
 the first translation attempt.
 
@@ -121,8 +122,9 @@ and edit its endpoint.
 | Storage key | Shape | Meaning |
 | --- | --- | --- |
 | `settings` | `{ enabled, autoScan }` | Global behaviour flags. |
-| `providerSettings` | `{ provider, urls, models, apiKeys, batchSize, parallel, ocrMode, ocrLanguages, vision…, showOriginalOnHover, highlightTranslated }` | Settings page values; per-provider maps are keyed by provider id. |
-| `lastLanguage` | `"de"` | Language used by the context menu when the site has no auto-translate entry. |
+| `providerSettings` | `{ provider, urls, models, apiKeys, batchSize, parallel, ocrMode, ocrLanguages, vision…, showOriginalOnHover, highlightTranslated, showToolbar }` | Settings page values; per-provider maps are keyed by provider id. |
+| `lastLanguage` | `"de"` | Language used by the context menu and the shortcut when the site has no auto-translate entry. |
+| `recentLanguages` | `["de", "ja"]` | Up to five recently used languages, shown as one-click chips in the popup. |
 | `imageCache` | `{ cacheKey: { extractedText, translation, ts } }` | Image translation results (newest 200). |
 | `translations` | `{ domain: { lang: { key: text } } }` | All known translations. |
 | `domainKeys` | `{ domain: { key: sourceText } }` | Last scan result per domain. |

@@ -1,17 +1,25 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extName__",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "__MSG_extDescription__",
   "default_locale": "en",
   "minimum_chrome_version": "116",
-  "permissions": ["storage", "activeTab", "scripting", "contextMenus", "offscreen"],
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "contextMenus",
+    "offscreen"
+  ],
   "host_permissions": [
     "http://localhost/*",
     "http://127.0.0.1/*",
     "https://*/*"
   ],
-  "optional_host_permissions": ["http://*/*"],
+  "optional_host_permissions": [
+    "http://*/*"
+  ],
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   },
@@ -33,11 +41,15 @@
   },
   "content_scripts": [
     {
-      "matches": ["http://*/*", "https://*/*"],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
       "js": [
         "shared/constants.js",
         "shared/utils.js",
         "shared/storage.js",
+        "shared/languages.js",
         "content/key-generator.js",
         "content/dom-scanner.js",
         "content/text-replacer.js",
@@ -56,8 +68,20 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["translations/*"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "translations/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
-  ]
+  ],
+  "commands": {
+    "toggle-translation": {
+      "suggested_key": {
+        "default": "Alt+Shift+T"
+      },
+      "description": "__MSG_commandToggle__"
+    }
+  }
 }

@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -11,7 +12,14 @@ from server.config import LLM_BACKEND
 
 log = logging.getLogger(__name__)
 
-app = FastAPI(title="any-i18n Translation Server")
+@asynccontextmanager
+async def lifespan(_app):
+    init_db()
+    log.info("Translation server started (backend=%s)", LLM_BACKEND)
+    yield
+
+
+app = FastAPI(lifespan=lifespan, title="any-i18n Translation Server")
 
 app.add_middleware(
     CORSMiddleware,
@@ -34,12 +42,6 @@ async def log_requests(request: Request, call_next):
     ms = (time.time() - start) * 1000
     log.info("%s %s %d (%.0fms)", request.method, request.url.path, response.status_code, ms)
     return response
-
-
-@app.on_event("startup")
-def startup():
-    init_db()
-    log.info("Translation server started (backend=%s)", LLM_BACKEND)
 
 
 @app.post("/api/translate")

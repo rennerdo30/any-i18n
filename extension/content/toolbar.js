@@ -213,10 +213,11 @@
   shadow.appendChild(toolbar);
 
   // Pre-fill language from navigator
-  var systemLang = (navigator.language || '').split('-')[0];
-  if (systemLang) {
-    langInput.value = systemLang;
-  }
+  browser.storage.local.get('lastLanguage').then(function(stored) {
+    if (!langInput.value) {
+      langInput.value = stored.lastLanguage || AnyI18nLanguages.browserDefault(navigator.language);
+    }
+  });
 
   // --- Behavior ---
 
@@ -241,18 +242,19 @@
     }
   }
 
+  /** Suggest every language by name; names and codes are both accepted. */
   function populateLanguages() {
-    var domain = getDomain(window.location.href);
-    browser.runtime.sendMessage({ type: MESSAGES.GET_LANGUAGES, domain: domain }).then(function(response) {
-      if (response && response.languages) {
-        datalist.innerHTML = '';
-        response.languages.forEach(function(lang) {
-          var opt = document.createElement('option');
-          opt.value = lang;
-          datalist.appendChild(opt);
-        });
-      }
-    }).catch(function() {});
+    if (datalist.childElementCount > 0) return;
+    AnyI18nLanguages.list(browser.i18n.getUILanguage()).forEach(function(entry) {
+      var opt = document.createElement('option');
+      opt.value = entry.code;
+      opt.label = entry.label;
+      datalist.appendChild(opt);
+    });
+  }
+
+  function currentLanguage() {
+    return AnyI18nLanguages.resolve(langInput.value, browser.i18n.getUILanguage());
   }
 
   function updateAutoIndicator() {
@@ -289,7 +291,7 @@
       return;
     }
 
-    var lang = langInput.value.trim();
+    var lang = currentLanguage();
     if (!lang) {
       showStatus(t('errorNoLanguage', undefined, 'Enter a language first.'), true);
       return;
@@ -333,7 +335,7 @@
       showStatus(t('statusProgress', [String(soFar)]), false);
 
       // Progressively apply translations
-      var lang = langInput.value.trim();
+      var lang = currentLanguage();
       if (lang) {
         api.apply(lang).then(function(applyResult) {
           if (applyResult && applyResult.success) {
@@ -348,7 +350,7 @@
     browser.storage.local.remove('_translateResult');
 
     if (result.success) {
-      var lang = langInput.value.trim();
+      var lang = currentLanguage();
       var parts = [t('statusTranslatedCount', [String(result.translated || 0)])];
       if (result.cached > 0) parts.push(t('statusFromCache', [String(result.cached)]));
       if (result.failed > 0) parts.push(t('statusFailedCount', [String(result.failed)]));
@@ -425,10 +427,33 @@
   }
 
   // Check settings, then inject
-  StorageManager.getSettings().then(function(settings) {
-    if (settings.enabled) {
-      document.documentElement.appendChild(host);
+  // Shown unless disabled globally or with "Show the floating translate button" in the settings.
+  var enabled = true;
+  var visible = true;
+
+  function updateVisibility() {
+    if (enabled && visible) {
+      if (!host.isConnected) document.documentElement.appendChild(host);
+    } else if (host.isConnected) {
+      host.remove();
     }
+  }
+
+  Promise.all([
+    StorageManager.getSettings(),
+    browser.storage.local.get(PROVIDER_SETTINGS_KEY)
+  ]).then(function(results) {
+    enabled = results[0].enabled !== false;
+    var providerSettings = results[1][PROVIDER_SETTINGS_KEY] || {};
+    visible = providerSettings.showToolbar !== false;
+    updateVisibility();
+  });
+
+  browser.storage.onChanged.addListener(function(changes, area) {
+    if (area !== 'local' || !changes[PROVIDER_SETTINGS_KEY]) return;
+    var next = changes[PROVIDER_SETTINGS_KEY].newValue || {};
+    visible = next.showToolbar !== false;
+    updateVisibility();
   });
 
 })();

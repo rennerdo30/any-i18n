@@ -7,20 +7,35 @@ import { Steps, Aside } from "@astrojs/starlight/components";
 
 ## The popup
 
-Click the toolbar icon to open the popup. The header shows the current hostname, a badge with the
-number of keys collected on this page, and a gear button that opens the settings page. The line below
-names the provider and model in use (click it to change them).
+Click the toolbar icon to open the popup. The header shows the current site and a gear button for
+the settings page. Below it, the provider chip names the provider and model and shows whether it is
+reachable (green) or not (red; click it to fix the setup).
 
 | Control | What it does |
 | --- | --- |
-| **Target Language** | Free-text field with autocomplete from the languages already stored for this domain. Any code the provider understands works (`de`, `fr`, `es`, …). |
-| **Translate** | Scans the page if needed, then sends keys without a stored translation to the selected [provider](/any-i18n/guides/providers/). Results are stored and applied batch by batch. |
-| **Auto-translate this site** | Remembers the hostname and language, and translates the page automatically on later visits. |
-| **Scan Page** | Re-walks the DOM and refreshes the key set for this domain. |
-| **Apply / Revert** | Applies translations already in storage for the chosen language, or restores every original string. |
-| **Export Keys** | Downloads `_keys.json` containing the current key set. |
-| **Import** | Loads a translation JSON file into storage. |
-| **Scanned Keys** | Expandable list of the collected keys and their source text. |
+| **Translate into** | Language picker with every common language by name (in your UI language and its own name), plus **Other language…** for any code or name the model understands. |
+| Recent languages | Up to four recently used languages as chips; a click translates right away. |
+| **Translate to …** | Scans the page, applies stored translations and requests only the missing strings from the selected [provider](/any-i18n/guides/providers/). |
+| Progress | *Translating to German · 12 / 40* with a **Stop** button. Stopping keeps what is already translated. Closing the popup does not interrupt the translation. |
+| **Show original** | Restores every original string. Picking another language translates into it instead. |
+| **Always translate** *site* | Translates the site automatically on every visit, in the selected language. |
+| **Keys and files** | Collapsed by default: **Scan page**, **Apply stored**, **Export keys**, **Import**, and the list of keys with their source text. |
+
+The toolbar icon shows the language code (for example `DE`) while a page is translated and `…` while a
+translation runs.
+
+## Keyboard shortcut
+
+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> translates the current page into the site's
+auto-translate language or the language used last, and restores the original when pressed again
+(it also stops a running translation). Change it on `chrome://extensions/shortcuts` (Firefox:
+**about:addons** → gear → *Manage Extension Shortcuts*), or from the settings page.
+
+## Progress on the page
+
+Every visible translation, wherever it was started, shows a small pill at the bottom of the page with
+the progress and a **Stop** button. It turns into a short confirmation when the translation is done.
+Text that appears later (dynamic content) is translated quietly without the pill.
 
 ## The settings page
 
@@ -56,15 +71,17 @@ its own CSS cannot leak out. Clicking it opens a compact panel with a language f
 **Translate** / **Revert** button, an `Auto: <lang>` indicator when auto-translate is on, and a
 status line.
 
-The language field is pre-filled from `navigator.language`, so the common case is one click. Set
-`TOOLBAR_ENABLED = false` in `extension/shared/constants.js` to remove the toolbar entirely.
+The language field accepts codes and names (`de`, `German`, `Deutsch`) and is pre-filled with the
+language used last. Turn the button off with **Show the floating translate button on pages** on the
+settings page.
 
 ## Typical flows
 
 ### With a model
 
 <Steps>
-1. Pick a provider on the settings page and press **Test connection**.
+1. Pick a provider on the settings page and press **Test connection** (on first install the settings
+   page offers the LM Studio or Ollama it finds).
 2. Open the page, click the toolbar circle or the extension popup (or right-click → **Translate page**).
 3. Enter a language code and press **Translate**.
 4. Text is replaced batch by batch as results arrive.
@@ -77,11 +94,11 @@ the any-i18n server as provider, the server's SQLite cache adds a second, cross-
 ### Fully manual (no server)
 
 <Steps>
-1. Open the page and press **Scan Page**.
-2. Press **Export Keys** to download `_keys.json`.
+1. Open the page, then **Keys and files** in the popup.
+2. Press **Export keys** to download `_keys.json`.
 3. Translate the `keys` object into a translation file (by hand, or with `any-i18n translate`).
 4. Press **Import** and select that file.
-5. Choose the language and press **Apply**.
+5. Press **Apply stored** (the picker switches to the imported language).
 </Steps>
 
 An imported file must contain `_meta.domain`, `_meta.language`, and a `translations` object;
@@ -114,7 +131,7 @@ missing or empty manifest is not an error — the shipped one has no domains.
 
 ## Auto-translate
 
-Toggling **Auto-translate this site** stores `{ language, enabled: true }` for the hostname. On the
+Toggling **Always translate** *site* stores `{ language, enabled: true }` for the hostname. On the
 next load the content script:
 
 1. scans the page,

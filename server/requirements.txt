@@ -1,4 +1,4 @@
-fastapi
-uvicorn
-anthropic
-openai
+fastapi==0.163.2
+uvicorn==0.54.0
+anthropic==2.10.0
+openai==3.55.0

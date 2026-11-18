@@ -22,7 +22,7 @@
     "any-i18n": "./bin/any-i18n.js"
   },
   "dependencies": {
-    "commander": "^15.0.0"
+    "commander": "^15.1.0"
   },
   "type": "module"
 }

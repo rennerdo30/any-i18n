@@ -26,6 +26,13 @@ translation set is a plain JSON file you can export, fix, diff and ship inside t
 
 ## Features
 
+- **One click, or one key**: pick a language by name and press *Translate to German*, press
+  <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> on any page, or right-click → *Translate page*; the same
+  key restores the original
+- **Live progress**: a progress pill on the page and in the popup (*Translating to German · 12 / 40*)
+  with a **Stop** button; the toolbar icon shows the active language
+- **Guided setup**: on first install the settings page finds LM Studio or Ollama on your machine and
+  connects it in one click
 - **Bring your own model**: LM Studio, Ollama, OpenAI, DeepSeek, OpenRouter and any
   OpenAI-compatible endpoint, called directly from the extension (no server needed), or the
   any-i18n server with its CLI backends
@@ -67,7 +74,8 @@ select the `extension/` directory.
 
 ## Quick start
 
-1. Open the extension's **Settings** (gear icon in the popup) and pick a provider:
+1. On first install the settings page opens and looks for LM Studio and Ollama on your machine;
+   press **Use** next to the one it finds. Otherwise pick a provider yourself (gear icon in the popup):
 
    | Provider | Default endpoint | API key | Notes |
    | --- | --- | --- | --- |
@@ -78,11 +86,13 @@ select the `extension/` directory.
    | any-i18n server | `http://localhost:39418` | no | See [Translation server](#translation-server) |
 
 2. Press **Test connection**. It also fills the model suggestions from the provider's model list.
-3. On any page, open the popup, enter a language (`de`, `fr`, `ja`, `pt-BR`, …) and press
-   **Translate**, or right-click the page and choose **Translate page**.
-4. Hover translated text to see the original; **Revert** restores the page.
+3. On any page, open the popup, pick a language and press **Translate to …**, press
+   <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>, or right-click the page and choose **Translate page**.
+   Recently used languages are one click away.
+4. Hover translated text to see the original; **Show original** (or the shortcut again) restores the
+   page, and **Stop** ends a running translation while keeping what is done.
 
-Turn on **Auto-translate this site** to translate a site on every visit. Together with the
+Turn on **Always translate** *site* to translate a site on every visit. Together with the
 per-site store this gives any website a locale for your language: stored strings appear
 immediately and only new text is sent to the model.
 
@@ -118,9 +128,9 @@ The extracted text is translated by the regular provider. Results are cached per
 
 ### Without a model
 
-1. Press **Scan page**, then **Export keys** to download `_keys.json`.
+1. Open **Keys and files** in the popup and press **Export keys** to download `_keys.json`.
 2. Translate the file with the CLI, or by hand.
-3. Press **Import**, enter the language, press **Apply**.
+3. Open **Keys and files** in the popup, press **Import**, then **Apply stored**.
 
 ## Translation server
 
@@ -138,8 +148,8 @@ Server settings are read from the environment (`server/config.py`):
 | `LLM_BACKEND` | `claude-cli` | One of `claude-cli`, `gemini-cli`, `codex-cli`, `openai-api`, `anthropic-api` |
 | `OPENAI_API_KEY` | *(empty)* | Credential for the `openai-api` backend |
 | `ANTHROPIC_API_KEY` | *(empty)* | Credential for the `anthropic-api` backend |
-| `OPENAI_MODEL` | `gpt-4o-mini` | Model id for the `openai-api` backend |
-| `ANTHROPIC_MODEL` | `claude-sonnet-4-20250514` | Model id for the `anthropic-api` backend |
+| `OPENAI_MODEL` | `gpt-5-mini` | Model id for the `openai-api` backend |
+| `ANTHROPIC_MODEL` | `claude-sonnet-5-5` | Model id for the `anthropic-api` backend |
 | `DB_PATH` | `server/translations.db` | SQLite translation cache |
 | `BATCH_SIZE` | `50` | Max strings per provider call |
 | `MAX_PARALLEL` | `5` | Max concurrent provider calls |

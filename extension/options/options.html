@@ -14,6 +14,17 @@
       <span id="saved" class="saved" role="status" aria-live="polite"></span>
     </header>
 
+    <section class="card welcome" id="welcome" aria-labelledby="welcome-heading" hidden>
+      <h2 id="welcome-heading" data-i18n="welcomeHeading">Welcome to any-i18n</h2>
+      <p class="hint" data-i18n="welcomeIntro">Connect a model to start translating. A local model keeps page text on your computer.</p>
+      <ul id="detect-results" class="detect-list" aria-live="polite"></ul>
+      <div class="row actions">
+        <button type="button" id="detect" class="btn btn-ghost" data-i18n="actionDetect">Search again</button>
+        <span id="welcome-ready" class="result ok"></span>
+      </div>
+      <p class="hint" data-i18n="welcomeCloudHint">No local model? Choose a cloud provider below and add its API key.</p>
+    </section>
+
     <section class="card" aria-labelledby="provider-heading">
       <h2 id="provider-heading" data-i18n="optionsProviderHeading">Translation provider</h2>
       <p class="hint" data-i18n="optionsProviderHint">Local providers keep page text on your machine. Cloud providers send it to the service you configure.</p>
@@ -120,6 +131,15 @@
         <input type="checkbox" id="highlight">
         <span data-i18n="optionsHighlight">Underline translated text</span>
       </label>
+      <label class="choice">
+        <input type="checkbox" id="show-toolbar">
+        <span data-i18n="optionsShowToolbar">Show the floating translate button on pages</span>
+      </label>
+      <div class="row shortcut-row">
+        <span data-i18n="optionsShortcutLabel">Keyboard shortcut to translate or restore a page:</span>
+        <kbd id="shortcut">–</kbd>
+        <button type="button" id="change-shortcut" class="btn btn-ghost btn-small" data-i18n="actionChangeShortcut">Change</button>
+      </div>
     </section>
 
     <section class="card" aria-labelledby="data-heading">
@@ -134,6 +154,7 @@
 
   <script src="../shared/i18n.js"></script>
   <script src="../shared/providers.js"></script>
+  <script src="../shared/languages.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

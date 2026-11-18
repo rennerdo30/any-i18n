@@ -31,6 +31,27 @@
   /** Timer for batching translation requests of dynamically added text */
   var dynamicTimer = null;
 
+  /** Whether a visible translation (popup, toolbar, menu, shortcut, auto) is running */
+  var busy = false;
+
+  /** Tell the background what this tab shows, for the toolbar badge. */
+  function reportState() {
+    browser.runtime.sendMessage({
+      type: 'PAGE_STATE',
+      language: TextReplacer.isApplied() ? activeLanguage : null,
+      busy: busy
+    }).catch(function() {});
+  }
+
+  function stopTranslation() {
+    if (!activeLanguage) return;
+    browser.runtime.sendMessage({
+      type: 'CANCEL_TRANSLATION',
+      domain: currentDomain,
+      language: activeLanguage
+    }).catch(function() {});
+  }
+
   /**
    * Scan the page for translatable text nodes and generate keys.
    */
@@ -73,6 +94,7 @@
 
       // Start mutation handler to auto-translate new content
       startMutationHandler(translations);
+      reportState();
 
       return {
         success: true,
@@ -90,6 +112,12 @@
     clearTimeout(dynamicTimer);
     activeLanguage = null;
     requestedKeys = new Set();
+    if (busy) {
+      busy = false;
+      PageUi.hideProgress();
+    }
+    PageUi.hideTooltip();
+    reportState();
 
     return { success: true };
   }
@@ -129,7 +157,8 @@
         missing[key] = collectedKeys[key];
         count++;
       });
-      if (count > 0) requestTranslation(missing, activeLanguage, 'page');
+      // Small background requests: no progress pill
+      if (count > 0) requestTranslation(missing, activeLanguage, 'dynamic');
     }, DYNAMIC_TRANSLATE_DELAY_MS);
   }
 
@@ -172,6 +201,9 @@
       });
 
       if (count > 0) {
+        busy = true;
+        PageUi.showProgress(language, 0, 0, stopTranslation);
+        reportState();
         requestTranslation(untranslated, language, source);
       }
       return {
@@ -262,18 +294,38 @@
     var result = changes._translateResult.newValue;
     if (!result) return;
     if (result.domain && result.domain !== currentDomain) return;
-    var ownRequest = result.source === 'auto' || result.source === 'page';
+    var ownRequest = result.source === 'auto' || result.source === 'page' ||
+      result.source === 'dynamic' || result.source === 'shortcut';
+    var current = result.language && activeLanguage === result.language;
 
-    if (!result.partial) {
+    if (result.partial) {
+      if (current && busy && result.source !== 'dynamic') {
+        PageUi.showProgress(result.language, result.done || 0, result.total || 0, stopTranslation);
+      }
+    } else {
       if (ownRequest) browser.storage.local.remove('_translateResult');
+      if (busy && result.source !== 'dynamic') {
+        busy = false;
+        if (!result.success) {
+          PageUi.hideProgress();
+        } else if (result.cancelled) {
+          PageUi.finishProgress(t('progressStopped', undefined, 'Stopped. What was translated so far stays.'));
+        } else {
+          PageUi.finishProgress(t('progressDone', [PageUi.languageLabel(result.language)],
+            'Translated to ' + PageUi.languageLabel(result.language)));
+        }
+        reportState();
+      }
       if (!result.success) {
-        // The popup and the toolbar report their own failures.
-        if (ownRequest) PageUi.notify(result.error || t('statusTranslateFailed', undefined, 'Translation failed.'), true);
+        // The popup reports its own failures; everything else gets an in-page notice.
+        if (result.source !== 'popup' && result.source !== 'toolbar' && result.source !== 'dynamic') {
+          PageUi.notify(result.error || t('statusTranslateFailed', undefined, 'Translation failed.'), true);
+        }
         return;
       }
     }
 
-    if (result.success && result.language && activeLanguage === result.language) {
+    if (result.success && current) {
       applyTranslation(result.language);
     }
   });
@@ -285,6 +337,7 @@
     return {
       isScanned: isScanned,
       isTranslated: TextReplacer.isApplied(),
+      busy: busy,
       keyCount: Object.keys(collectedKeys).length,
       translatedCount: TextReplacer.getAppliedCount(),
       activeLanguage: activeLanguage,
@@ -337,6 +390,21 @@
         translatePage(message.language, message.source || 'page').then(sendResponse);
         return true; // Async response
 
+      case 'TOGGLE_TRANSLATION':
+        if (TextReplacer.isApplied() || busy) {
+          if (busy) stopTranslation();
+          sendResponse(revertTranslation());
+        } else {
+          translatePage(message.language, 'shortcut').then(sendResponse);
+          return true;
+        }
+        break;
+
+      case 'CANCEL_TRANSLATION':
+        stopTranslation();
+        sendResponse({ success: true });
+        break;
+
       case MESSAGES.IMAGE_TRANSLATION_STARTED:
         PageUi.showImageLoading(message.srcUrl);
         sendResponse({ success: true });
@@ -357,6 +425,7 @@
     getStatus: getStatus,
     getKeys: function() { return collectedKeys; },
     translatePage: translatePage,
+    stop: stopTranslation,
     handleNavigation: handleNavigation
   };
 

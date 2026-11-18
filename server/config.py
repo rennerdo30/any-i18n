@@ -8,8 +8,8 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 # Model names
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
-ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5-mini")
+ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5")
 
 # Database
 DB_PATH = os.environ.get("DB_PATH", os.path.join(os.path.dirname(__file__), "translations.db"))

@@ -38,6 +38,13 @@
     visionKey: document.getElementById('vision-key'),
     showOriginal: document.getElementById('show-original'),
     highlight: document.getElementById('highlight'),
+    showToolbar: document.getElementById('show-toolbar'),
+    shortcut: document.getElementById('shortcut'),
+    changeShortcut: document.getElementById('change-shortcut'),
+    welcome: document.getElementById('welcome'),
+    detect: document.getElementById('detect'),
+    detectResults: document.getElementById('detect-results'),
+    welcomeReady: document.getElementById('welcome-ready'),
     cacheStats: document.getElementById('cache-stats'),
     clearCache: document.getElementById('clear-cache'),
     saved: document.getElementById('saved')
@@ -156,6 +163,7 @@
     el.visionKey.value = settings.visionApiKey;
     el.showOriginal.checked = settings.showOriginalOnHover !== false;
     el.highlight.checked = settings.highlightTranslated === true;
+    el.showToolbar.checked = settings.showToolbar !== false;
   }
 
   function renderCacheStats() {
@@ -191,6 +199,7 @@
     settings.visionApiKey = el.visionKey.value.trim();
     settings.showOriginalOnHover = el.showOriginal.checked;
     settings.highlightTranslated = el.highlight.checked;
+    settings.showToolbar = el.showToolbar.checked;
   }
 
   function save() {
@@ -225,7 +234,7 @@
     input.addEventListener('input', scheduleSave);
   });
 
-  [el.showOriginal, el.highlight].forEach(function(input) {
+  [el.showOriginal, el.highlight, el.showToolbar].forEach(function(input) {
     input.addEventListener('change', save);
   });
 
@@ -299,6 +308,91 @@
     builtin.closest('label').title = t('errorOcrUnsupported');
   }
 
+  // --- First-run setup: find local models ---
+
+  var PROVIDER_LABELS = { lmstudio: 'providerLmstudio', ollama: 'providerOllama' };
+
+  /** Prefer a model that is known to translate well; otherwise the first one. */
+  function pickModel(provider, models) {
+    var preferred = (Providers.RECOMMENDED_MODELS[provider] || []);
+    for (var i = 0; i < preferred.length; i++) {
+      for (var j = 0; j < models.length; j++) {
+        if (models[j].indexOf(preferred[i]) === 0) return models[j];
+      }
+    }
+    return models[0] || '';
+  }
+
+  function useDetected(found) {
+    settings.provider = found.provider;
+    delete settings.urls[found.provider];
+    if (found.provider === 'ollama' || !settings.models[found.provider]) {
+      setOrDelete(settings.models, found.provider, found.provider === 'lmstudio' ? '' : pickModel(found.provider, found.models));
+    }
+    render();
+    save();
+    el.welcomeReady.textContent = t('welcomeReady', undefined, 'Ready. Open any website and translate it.');
+  }
+
+  function detect() {
+    el.detect.disabled = true;
+    el.detectResults.innerHTML = '';
+    el.welcomeReady.textContent = t('statusDetecting', undefined, 'Looking for local models…');
+    el.welcomeReady.className = 'result';
+    browser.runtime.sendMessage({ type: 'DETECT_PROVIDERS' }).then(function(results) {
+      var anyFound = false;
+      (results || []).forEach(function(found) {
+        var item = document.createElement('li');
+        item.className = 'detect-item' + (found.ok ? ' found' : '');
+        var dot = document.createElement('span');
+        dot.className = 'dot';
+        var name = document.createElement('span');
+        name.className = 'detect-name';
+        name.textContent = t(PROVIDER_LABELS[found.provider]);
+        var detail = document.createElement('span');
+        detail.className = 'detect-detail';
+        detail.textContent = found.ok
+          ? t('detectFound', [found.baseUrl, String(found.models.length)], 'Running at ' + found.baseUrl)
+          : t('detectMissing', [found.baseUrl], 'Not running at ' + found.baseUrl);
+        item.appendChild(dot);
+        item.appendChild(name);
+        item.appendChild(detail);
+        if (found.ok) {
+          anyFound = true;
+          var use = document.createElement('button');
+          use.type = 'button';
+          use.className = 'btn btn-primary btn-small';
+          use.textContent = t('actionUse', undefined, 'Use');
+          use.addEventListener('click', function() { useDetected(found); });
+          item.appendChild(use);
+        }
+        el.detectResults.appendChild(item);
+      });
+      el.welcomeReady.className = 'result' + (anyFound ? ' ok' : '');
+      el.welcomeReady.textContent = anyFound ? '' : t('detectNone', undefined, 'No local model found.');
+    }).finally(function() {
+      el.detect.disabled = false;
+    });
+  }
+
+  el.detect.addEventListener('click', detect);
+
+  // --- Keyboard shortcut ---
+
+  function renderShortcut() {
+    if (!browser.commands || !browser.commands.getAll) return;
+    browser.commands.getAll().then(function(commands) {
+      var toggle = commands.filter(function(c) { return c.name === 'toggle-translation'; })[0];
+      el.shortcut.textContent = (toggle && toggle.shortcut) || t('shortcutNone', undefined, 'not set');
+    });
+  }
+
+  el.changeShortcut.addEventListener('click', function() {
+    // Chromium manages shortcuts on its own page; Firefox on about:addons.
+    var url = navigator.userAgent.indexOf('Firefox') !== -1 ? 'about:addons' : 'chrome://extensions/shortcuts';
+    browser.tabs.create({ url: url }).catch(function() {});
+  });
+
   // --- Init ---
 
   browser.storage.local.get(SETTINGS_KEY).then(function(stored) {
@@ -306,5 +400,10 @@
     if (!browser.offscreen) settings.ocrMode = Providers.OCR_MODE_VISION;
     render();
     renderCacheStats();
+    renderShortcut();
+    if (new URLSearchParams(location.search).get('welcome') === '1') {
+      el.welcome.hidden = false;
+      detect();
+    }
   });
 })();

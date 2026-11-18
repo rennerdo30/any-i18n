@@ -149,17 +149,8 @@
   "popupTargetLanguage": {
     "message": "Zielsprache"
   },
-  "popupLanguagePlaceholder": {
-    "message": "z. B. en, fr, es …"
-  },
-  "popupAutoTranslate": {
-    "message": "Diese Website automatisch übersetzen"
-  },
   "actionScan": {
     "message": "Seite scannen"
-  },
-  "actionApply": {
-    "message": "Anwenden"
   },
   "actionExportKeys": {
     "message": "Exportieren"
@@ -167,22 +158,8 @@
   "actionImport": {
     "message": "Importieren"
   },
-  "popupScannedKeys": {
-    "message": "Gescannte Schlüssel"
-  },
-  "popupNoKeys": {
-    "message": "Noch keine Schlüssel gescannt."
-  },
   "popupSettings": {
     "message": "Einstellungen"
-  },
-  "popupProviderVia": {
-    "message": "über $ARG1$",
-    "placeholders": {
-      "arg1": {
-        "content": "$1"
-      }
-    }
   },
   "statusScanFound": {
     "message": "$ARG1$ übersetzbare Texte gefunden.",
@@ -194,22 +171,6 @@
   },
   "statusScanFailed": {
     "message": "Scannen fehlgeschlagen: $ARG1$",
-    "placeholders": {
-      "arg1": {
-        "content": "$1"
-      }
-    }
-  },
-  "statusRevertFailed": {
-    "message": "Zurücksetzen fehlgeschlagen: $ARG1$",
-    "placeholders": {
-      "arg1": {
-        "content": "$1"
-      }
-    }
-  },
-  "statusApplied": {
-    "message": "Übersetzung angewendet ($ARG1$).",
     "placeholders": {
       "arg1": {
         "content": "$1"
@@ -238,9 +199,6 @@
       }
     }
   },
-  "statusImported": {
-    "message": "Übersetzung importiert."
-  },
   "statusImportFailed": {
     "message": "Import fehlgeschlagen: $ARG1$",
     "placeholders": {
@@ -252,27 +210,8 @@
   "errorInvalidJson": {
     "message": "Ungültige JSON-Datei."
   },
-  "statusAppliedSuffix": {
-    "message": "$ARG1$, angewendet.",
-    "placeholders": {
-      "arg1": {
-        "content": "$1"
-      }
-    }
-  },
-  "statusStoredSuffix": {
-    "message": "$ARG1$, gespeichert. Zum Anzeigen „Anwenden“ klicken.",
-    "placeholders": {
-      "arg1": {
-        "content": "$1"
-      }
-    }
-  },
   "errorUnknown": {
     "message": "unbekannter Fehler"
-  },
-  "errorRestrictedPage": {
-    "message": "Diese Seite kann nicht übersetzt werden."
   },
   "providerServer": {
     "message": "any-i18n-Server"
@@ -448,5 +387,180 @@
         "content": "$1"
       }
     }
+  },
+  "actionStop": {
+    "message": "Stopp"
+  },
+  "progressTranslating": {
+    "message": "Übersetze auf $ARG1$ · $ARG2$ / $ARG3$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      },
+      "arg2": {
+        "content": "$2"
+      },
+      "arg3": {
+        "content": "$3"
+      }
+    }
+  },
+  "progressStarting": {
+    "message": "Übersetze auf $ARG1$ …",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "progressStopped": {
+    "message": "Angehalten. Bereits Übersetztes bleibt erhalten."
+  },
+  "progressDone": {
+    "message": "Auf $ARG1$ übersetzt",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "commandToggle": {
+    "message": "Seite übersetzen oder Original anzeigen"
+  },
+  "popupRestricted": {
+    "message": "Diese Seite darf der Browser nicht übersetzen lassen. Öffne eine normale Website, um sie zu übersetzen."
+  },
+  "popupTranslateInto": {
+    "message": "Zielsprache"
+  },
+  "popupOtherPlaceholder": {
+    "message": "Sprachcode oder Name, z. B. ka oder Georgisch"
+  },
+  "popupRecent": {
+    "message": "Zuletzt verwendete Sprachen"
+  },
+  "popupOtherLanguage": {
+    "message": "Andere Sprache …"
+  },
+  "actionShowOriginal": {
+    "message": "Original anzeigen"
+  },
+  "popupTools": {
+    "message": "Schlüssel und Dateien"
+  },
+  "popupToolsHint": {
+    "message": "Jeder Text bekommt einen festen Schlüssel. Exportiere die Schlüssel, um sie anderswo zu übersetzen, oder importiere eine fertige Übersetzungsdatei."
+  },
+  "actionApplyStored": {
+    "message": "Gespeicherte anwenden"
+  },
+  "popupOpenSettings": {
+    "message": "Einstellungen öffnen"
+  },
+  "actionTranslateTo": {
+    "message": "Auf $ARG1$ übersetzen",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "popupTranslatedTo": {
+    "message": "Auf $ARG1$ übersetzt",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "popupProviderError": {
+    "message": "$ARG1$ ist nicht erreichbar. Zum Einrichten klicken.",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "popupAlwaysTranslate": {
+    "message": "$ARG1$ immer übersetzen",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusImportedCount": {
+    "message": "$ARG1$ Übersetzungen für $ARG2$ importiert.",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      },
+      "arg2": {
+        "content": "$2"
+      }
+    }
+  },
+  "popupShortcutHint": {
+    "message": "$ARG1$ übersetzt jede Seite oder stellt sie wieder her",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "welcomeHeading": {
+    "message": "Willkommen bei any-i18n"
+  },
+  "welcomeIntro": {
+    "message": "Verbinde ein Modell, um mit dem Übersetzen zu beginnen. Ein lokales Modell behält den Seitentext auf deinem Rechner."
+  },
+  "actionDetect": {
+    "message": "Erneut suchen"
+  },
+  "welcomeCloudHint": {
+    "message": "Kein lokales Modell? Wähle unten einen Cloud-Anbieter und trage dessen API-Schlüssel ein."
+  },
+  "welcomeReady": {
+    "message": "Fertig. Öffne eine beliebige Website und übersetze sie."
+  },
+  "statusDetecting": {
+    "message": "Suche nach lokalen Modellen …"
+  },
+  "detectFound": {
+    "message": "Läuft unter $ARG1$ · $ARG2$ Modelle",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      },
+      "arg2": {
+        "content": "$2"
+      }
+    }
+  },
+  "detectMissing": {
+    "message": "Läuft nicht unter $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "detectNone": {
+    "message": "Kein lokales Modell gefunden. Starte LM Studio oder Ollama und suche dann erneut."
+  },
+  "actionUse": {
+    "message": "Verwenden"
+  },
+  "optionsShowToolbar": {
+    "message": "Schwebende Übersetzen-Schaltfläche auf Seiten anzeigen"
+  },
+  "optionsShortcutLabel": {
+    "message": "Tastenkürzel zum Übersetzen oder Wiederherstellen einer Seite:"
+  },
+  "actionChangeShortcut": {
+    "message": "Ändern"
+  },
+  "shortcutNone": {
+    "message": "nicht festgelegt"
   }
 }
