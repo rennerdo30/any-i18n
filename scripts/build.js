@@ -54,7 +54,7 @@ for (const browser of targetBrowsers) {
       // Firefox runs MV3 background code as an event page, not a service worker, and has no
       // offscreen documents (the built-in OCR is Chrome/Edge only; vision models still work).
       manifest.background = {
-        scripts: ['shared/providers.js', 'background/service-worker.js']
+        scripts: ['shared/providers.js', 'shared/languages.js', 'background/service-worker.js']
       };
       manifest.permissions = manifest.permissions.filter(function(permission) {
         return permission !== 'offscreen';

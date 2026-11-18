@@ -4,7 +4,7 @@ if (typeof browser === 'undefined') var browser = chrome;
 // Chrome runs this file as a service worker; Firefox loads shared/providers.js first through
 // background.scripts (see scripts/build.js).
 if (typeof AnyI18nProviders === 'undefined' && typeof importScripts === 'function') {
-  importScripts('../shared/providers.js');
+  importScripts('../shared/providers.js', '../shared/languages.js');
 }
 
 /**
@@ -23,6 +23,11 @@ var Providers = AnyI18nProviders;
 
 var SETTINGS_KEY = 'providerSettings';
 var LAST_LANGUAGE_KEY = 'lastLanguage';
+var RECENT_LANGUAGES_KEY = 'recentLanguages';
+var MAX_RECENT_LANGUAGES = 5;
+var BADGE_COLOR = '#0e7c6b';
+var BADGE_BUSY_TEXT = '\u2026';
+var COMMAND_TOGGLE = 'toggle-translation';
 var IMAGE_CACHE_KEY = 'imageCache';
 var MAX_IMAGE_CACHE_ENTRIES = 200;
 
@@ -56,6 +61,8 @@ browser.runtime.onInstalled.addListener(function(details) {
       domainKeys: {}
     });
     indexBundledTranslations();
+    // First run: the settings page detects local models and walks through the setup.
+    browser.tabs.create({ url: browser.runtime.getURL('options/options.html?welcome=1') });
   }
 
   // Installs from before direct providers existed keep using the translation server.
@@ -199,9 +206,7 @@ browser.runtime.onMessage.addListener(function(message, sender, sendResponse) {
       return true;
 
     case 'TRANSLATE_KEYS':
-      if (message.language) {
-        browser.storage.local.set({ [LAST_LANGUAGE_KEY]: message.language });
-      }
+      if (message.language) rememberLanguage(message.language);
       handleTranslateKeys(message).then(function(result) {
         result.source = message.source || 'unknown';
         result.domain = message.domain;
@@ -254,6 +259,31 @@ browser.runtime.onMessage.addListener(function(message, sender, sendResponse) {
       testConnection(message.provider, message.baseUrl, message.apiKey)
         .then(function(info) { sendResponse(Object.assign({ success: true }, info)); })
         .catch(function(error) { sendResponse({ success: false, error: error.message }); });
+      return true;
+
+    case 'CANCEL_TRANSLATION':
+      sendResponse({ cancelled: cancelTranslation(message.domain, message.language) });
+      return undefined;
+
+    case 'PAGE_STATE':
+      if (sender.tab && sender.tab.id !== undefined) updateBadge(sender.tab.id, message);
+      return undefined;
+
+    case 'CHECK_PROVIDER':
+      loadProvider().then(function(resolved) {
+        if (resolved.needsKey && !resolved.apiKey) {
+          throw new Error(t('errorMissingKey', undefined, 'Add an API key for this provider in the settings.'));
+        }
+        return testConnection(resolved.provider, resolved.baseUrl, resolved.apiKey);
+      }).then(function() {
+        sendResponse({ success: true });
+      }).catch(function(error) {
+        sendResponse({ success: false, error: error.message });
+      });
+      return true;
+
+    case 'DETECT_PROVIDERS':
+      detectLocalProviders().then(sendResponse);
       return true;
 
     case 'GET_CACHE_STATS':
@@ -321,6 +351,31 @@ function handleImportTranslations(message) {
 // (popup and dynamic content at once, two tabs of one site) does not pay for them twice.
 var inFlight = {};
 
+// Running requests per domain and language; Stop marks them cancelled. Workers finish the batch
+// they are on (its result is still stored) and take no new ones.
+var activeRequests = {};
+
+function cancelTranslation(domain, language) {
+  var tokens = activeRequests[domain + '\u0000' + language];
+  if (!tokens || tokens.size === 0) return false;
+  tokens.forEach(function(token) {
+    token.cancelled = true;
+    if (token.onCancel) token.onCancel();
+  });
+  return true;
+}
+
+function rememberLanguage(language) {
+  browser.storage.local.get(RECENT_LANGUAGES_KEY).then(function(stored) {
+    var recent = (stored[RECENT_LANGUAGES_KEY] || []).filter(function(code) { return code !== language; });
+    recent.unshift(language);
+    var update = {};
+    update[LAST_LANGUAGE_KEY] = language;
+    update[RECENT_LANGUAGES_KEY] = recent.slice(0, MAX_RECENT_LANGUAGES);
+    return browser.storage.local.set(update);
+  });
+}
+
 function handleTranslateKeys(message) {
   if (!message.keys || !message.language || !message.domain) {
     return Promise.resolve({ success: false, error: 'Missing keys, language, or domain.' });
@@ -334,11 +389,16 @@ function handleTranslateKeys(message) {
     keys[key] = message.keys[key];
     busy.add(key);
   });
-  var request = Object.assign({}, message, { keys: keys });
+  var token = { cancelled: false, onCancel: null };
+  var request = Object.assign({}, message, { keys: keys, token: token });
+  var tokens = activeRequests[scope] || (activeRequests[scope] = new Set());
+  tokens.add(token);
 
   function release() {
     Object.keys(keys).forEach(function(key) { busy.delete(key); });
     if (busy.size === 0) delete inFlight[scope];
+    tokens.delete(token);
+    if (tokens.size === 0) delete activeRequests[scope];
   }
 
   if (Object.keys(keys).length === 0) {
@@ -355,6 +415,10 @@ function handleTranslateKeys(message) {
     return { success: false, error: error.message || 'Translation failed.' };
   }).then(function(result) {
     release();
+    if (token.cancelled) {
+      result.cancelled = true;
+      result.success = true;
+    }
     return result;
   });
 }
@@ -409,6 +473,8 @@ function translateViaServerStreaming(message, serverUrl) {
   var accumulated = {};
   var cachedCount = 0;
   var translatedCount = 0;
+  var total = Object.keys(message.keys).length;
+  var token = message.token || {};
 
   return fetch(serverUrl + '/api/translate/stream', {
     method: 'POST',
@@ -422,6 +488,9 @@ function translateViaServerStreaming(message, serverUrl) {
     var reader = response.body.getReader();
     var decoder = new TextDecoder();
     var buffer = '';
+    token.onCancel = function() {
+      reader.cancel().catch(function() {});
+    };
 
     function processEvents(events) {
       var writes = [];
@@ -440,6 +509,8 @@ function translateViaServerStreaming(message, serverUrl) {
             translations: accumulated,
             cached: cachedCount,
             translated: translatedCount,
+            total: total,
+            done: cachedCount + translatedCount,
             partial: true,
             source: source,
             domain: domain,
@@ -452,7 +523,7 @@ function translateViaServerStreaming(message, serverUrl) {
 
     function read() {
       return reader.read().then(function(result) {
-        if (result.done) {
+        if (result.done || token.cancelled) {
           return buffer.trim() ? processEvents(parseSSE(buffer + '\n\n').events) : undefined;
         }
         buffer += decoder.decode(result.value, { stream: true });
@@ -468,14 +539,17 @@ function translateViaServerStreaming(message, serverUrl) {
       success: true,
       translations: accumulated,
       cached: cachedCount,
-      translated: translatedCount
+      translated: translatedCount,
+      total: total,
+      done: cachedCount + translatedCount
     };
   });
 }
 
 /** Translate through the server; falls back to the non-streaming endpoint. */
 function translateViaServer(message, serverUrl) {
-  return translateViaServerStreaming(message, serverUrl).catch(function() {
+  return translateViaServerStreaming(message, serverUrl).catch(function(streamError) {
+    if (message.token && message.token.cancelled) throw streamError;
     return fetch(serverUrl + '/api/translate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -520,11 +594,10 @@ function chat(resolved, messages, timeoutMs, overrides) {
     method: 'POST',
     headers: Providers.authHeaders(target.apiKey),
     signal: controller.signal,
-    body: JSON.stringify({
+    body: JSON.stringify(Object.assign({
       model: target.model || 'local-model',
-      messages: messages,
-      temperature: 0.2
-    })
+      messages: messages
+    }, Providers.samplingOptions(target.model)))
   }).then(function(response) {
     if (!response.ok) {
       return response.text().catch(function() { return ''; }).then(function(text) {
@@ -618,8 +691,11 @@ function translateDirect(message, resolved) {
 
     var queue = Providers.makeBatches(texts, resolved.batchSize);
     var workerCount = Math.min(resolved.parallel, queue.length);
+    var total = texts.length;
+    var token = message.token || {};
 
     function runWorker() {
+      if (token.cancelled) return Promise.resolve();
       var batch = queue.shift();
       if (!batch) return Promise.resolve();
 
@@ -641,6 +717,9 @@ function translateDirect(message, resolved) {
             translations: accumulated,
             cached: cachedCount,
             translated: translatedCount,
+            failed: failedCount,
+            total: total,
+            done: translatedCount + failedCount,
             partial: true,
             source: source,
             domain: domain,
@@ -668,7 +747,9 @@ function translateDirect(message, resolved) {
         translations: accumulated,
         cached: cachedCount,
         translated: translatedCount,
-        failed: failedCount
+        failed: failedCount,
+        total: total,
+        done: translatedCount + failedCount
       };
     });
   });
@@ -765,7 +846,7 @@ function targetLanguageFor(url) {
     var auto = (stored.autoTranslate || {})[domain];
     if (auto && auto.language) return auto.language;
     if (stored[LAST_LANGUAGE_KEY]) return stored[LAST_LANGUAGE_KEY];
-    return (navigator.language || 'en').split('-')[0];
+    return AnyI18nLanguages.browserDefault(navigator.language);
   });
 }
 
@@ -981,4 +1062,50 @@ function extractWithVisionModel(dataUrl, settings) {
   return chat(null, messages, VISION_TIMEOUT_MS, target).then(function(content) {
     return Providers.cleanContent(content);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Toolbar badge, keyboard shortcut, local provider detection
+// ---------------------------------------------------------------------------
+
+/** Badge: "…" while translating, the language code while a translation is shown. */
+function updateBadge(tabId, state) {
+  var text = '';
+  if (state.busy) {
+    text = BADGE_BUSY_TEXT;
+  } else if (state.language) {
+    text = String(state.language).split('-')[0].slice(0, 3).toUpperCase();
+  }
+  browser.action.setBadgeBackgroundColor({ tabId: tabId, color: BADGE_COLOR }).catch(function() {});
+  browser.action.setBadgeText({ tabId: tabId, text: text }).catch(function() {});
+}
+
+if (browser.commands) {
+  browser.commands.onCommand.addListener(function(command, tab) {
+    if (command !== COMMAND_TOGGLE) return;
+    var target = tab ? Promise.resolve(tab) : browser.tabs.query({ active: true, currentWindow: true }).then(function(tabs) {
+      return tabs[0];
+    });
+    target.then(function(activeTab) {
+      if (!activeTab || activeTab.id === undefined) return undefined;
+      return targetLanguageFor(activeTab.url).then(function(language) {
+        return sendToTab(activeTab.id, { type: 'TOGGLE_TRANSLATION', language: language });
+      });
+    }).catch(function(error) {
+      console.warn('any-i18n: shortcut failed on this page', error);
+    });
+  });
+}
+
+/** Probe LM Studio and Ollama on their default ports (first-run setup). */
+function detectLocalProviders() {
+  var candidates = ['lmstudio', 'ollama'];
+  return Promise.all(candidates.map(function(provider) {
+    var baseUrl = Providers.PROVIDERS[provider].url;
+    return listModels(provider, baseUrl, '').then(function(models) {
+      return { provider: provider, baseUrl: baseUrl, ok: true, models: models };
+    }).catch(function(error) {
+      return { provider: provider, baseUrl: baseUrl, ok: false, error: error.message };
+    });
+  }));
 }

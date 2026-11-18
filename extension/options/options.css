@@ -249,3 +249,71 @@ button:focus-visible {
     flex-wrap: wrap;
   }
 }
+
+.welcome {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+
+.detect-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.detect-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.detect-item .dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--border-hi);
+}
+
+.detect-item.found .dot {
+  background: var(--green);
+}
+
+.detect-name {
+  font-weight: 600;
+}
+
+.detect-detail {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.btn-small {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+.shortcut-row {
+  flex-wrap: wrap;
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+kbd {
+  padding: 2px 8px;
+  border: 1px solid var(--border-hi);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  font-family: 'SF Mono', Consolas, monospace;
+  font-size: 12px;
+}

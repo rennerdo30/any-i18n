@@ -11,7 +11,7 @@ import { Aside, FileTree } from "@astrojs/starlight/components";
 - extension/ Manifest V3 extension, plain JS, no bundler
   - manifest.json declares content script load order
   - _locales/ UI strings (en, de)
-  - shared/ constants.js, utils.js, storage.js, providers.js, i18n.js
+  - shared/ constants.js, utils.js, storage.js, languages.js, providers.js, i18n.js
   - content/ key-generator.js, dom-scanner.js, text-replacer.js, mutation-handler.js, page-ui.js, content-script.js, toolbar.js
   - background/service-worker.js providers, server stream, import, context menu, image translation
   - offscreen/ offscreen document running the bundled Tesseract OCR
@@ -72,7 +72,7 @@ validate it, bundle it into `extension/translations/`, and the service worker in
 ### No bundler
 
 Content scripts are listed in `manifest.json` and loaded in dependency order:
-`shared/constants.js`, `shared/utils.js`, `shared/storage.js`, then `content/key-generator.js`,
+`shared/constants.js`, `shared/utils.js`, `shared/storage.js`, `shared/languages.js`, then `content/key-generator.js`,
 `content/dom-scanner.js`, `content/text-replacer.js`, `content/mutation-handler.js`,
 `content/page-ui.js`, `content/content-script.js`, `content/toolbar.js`. They share one global scope, which is why
 top-level declarations use `var`. Cross-browser access goes through a one-line shim:

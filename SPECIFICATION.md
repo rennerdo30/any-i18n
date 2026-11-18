@@ -32,7 +32,16 @@ import), and replaces the content in place with full revert support.
   `content/page-ui.js` renders the original-text tooltip, image overlays and notices in a second
   closed shadow root
 - An offscreen document (`offscreen/`) hosts the vendored Tesseract.js for the built-in OCR
-- UI strings come from `_locales/{en,de}/messages.json`
+- UI strings come from `_locales/{en,de}/messages.json`; language names come from
+  `Intl.DisplayNames` via `shared/languages.js`
+- Command `toggle-translation` (default <kbd>Alt+Shift+T</kbd>) toggles the active tab between
+  translated and original; the action badge shows the active language or `…` while translating
+- `CANCEL_TRANSLATION` marks running requests for a domain and language cancelled: workers finish
+  their current batch (which is still stored) and start no new one; the server stream is cancelled;
+  the final result carries `cancelled: true`
+- Partial and final results carry `total` (unique strings requested) and `done`
+- On first install the options page opens with `?welcome=1` and probes LM Studio and Ollama on their
+  default ports (`DETECT_PROVIDERS`)
 
 Permissions: `storage`, `activeTab`, `scripting`, `contextMenus`, `offscreen`; `host_permissions`
 for `http://localhost/*`, `http://127.0.0.1/*` and `https://*/*`; optional `http://*/*` for plain-HTTP
@@ -41,7 +50,7 @@ providers on other hosts. Content scripts match `http://*/*` and `https://*/*` a
 Content script load order (from `manifest.json`):
 
 ```
-shared/constants.js, shared/utils.js, shared/storage.js,
+shared/constants.js, shared/utils.js, shared/storage.js, shared/languages.js,
 content/key-generator.js, content/dom-scanner.js, content/text-replacer.js,
 content/mutation-handler.js, content/page-ui.js, content/content-script.js, content/toolbar.js
 ```
@@ -226,8 +235,9 @@ flag. Translations are always merged into storage, never replaced.
 | Key | Shape |
 | --- | --- |
 | `settings` | `{ enabled, autoScan }` |
-| `providerSettings` | `{ provider, urls, models, apiKeys, batchSize, parallel, ocrMode, ocrLanguages, visionUrl, visionModel, visionApiKey, showOriginalOnHover, highlightTranslated }` |
+| `providerSettings` | `{ provider, urls, models, apiKeys, batchSize, parallel, ocrMode, ocrLanguages, visionUrl, visionModel, visionApiKey, showOriginalOnHover, highlightTranslated, showToolbar }` |
 | `lastLanguage` | language string |
+| `recentLanguages` | up to five language strings, newest first |
 | `imageCache` | `{ key: { extractedText, translation, ts } }` |
 | `translations` | `{ domain: { language: { key: text } } }` |
 | `domainKeys` | `{ domain: { key: sourceText } }` |

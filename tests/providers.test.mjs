@@ -108,6 +108,15 @@ test('replyContent and modelIds read OpenAI and Ollama shapes', () => {
   assert.deepEqual(plain(Providers.modelIds(null)), []);
 });
 
+test('samplingOptions omits temperature for reasoning models', () => {
+  assert.deepEqual(plain(Providers.samplingOptions('gpt-5-mini')), {});
+  assert.deepEqual(plain(Providers.samplingOptions('openai/gpt-5.4-mini')), {});
+  assert.deepEqual(plain(Providers.samplingOptions('o4-mini')), {});
+  assert.deepEqual(plain(Providers.samplingOptions('deepseek-v4-flash')), { temperature: 0.2 });
+  assert.deepEqual(plain(Providers.samplingOptions('qwen3')), { temperature: 0.2 });
+  assert.deepEqual(plain(Providers.samplingOptions('')), { temperature: 0.2 });
+});
+
 test('describeHttpError explains common statuses', () => {
   assert.match(Providers.describeHttpError(401, ''), /API key/);
   assert.match(Providers.describeHttpError(503, 'down'), /Server error \(503\).*down/);

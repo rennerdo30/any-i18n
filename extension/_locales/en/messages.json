@@ -149,17 +149,8 @@
   "popupTargetLanguage": {
     "message": "Target language"
   },
-  "popupLanguagePlaceholder": {
-    "message": "e.g. de, fr, es…"
-  },
-  "popupAutoTranslate": {
-    "message": "Auto-translate this site"
-  },
   "actionScan": {
     "message": "Scan page"
-  },
-  "actionApply": {
-    "message": "Apply"
   },
   "actionExportKeys": {
     "message": "Export keys"
@@ -167,22 +158,8 @@
   "actionImport": {
     "message": "Import"
   },
-  "popupScannedKeys": {
-    "message": "Scanned keys"
-  },
-  "popupNoKeys": {
-    "message": "No keys scanned yet."
-  },
   "popupSettings": {
     "message": "Settings"
-  },
-  "popupProviderVia": {
-    "message": "via $ARG1$",
-    "placeholders": {
-      "arg1": {
-        "content": "$1"
-      }
-    }
   },
   "statusScanFound": {
     "message": "Found $ARG1$ translatable strings.",
@@ -194,22 +171,6 @@
   },
   "statusScanFailed": {
     "message": "Scan failed: $ARG1$",
-    "placeholders": {
-      "arg1": {
-        "content": "$1"
-      }
-    }
-  },
-  "statusRevertFailed": {
-    "message": "Revert failed: $ARG1$",
-    "placeholders": {
-      "arg1": {
-        "content": "$1"
-      }
-    }
-  },
-  "statusApplied": {
-    "message": "Translation applied ($ARG1$).",
     "placeholders": {
       "arg1": {
         "content": "$1"
@@ -238,9 +199,6 @@
       }
     }
   },
-  "statusImported": {
-    "message": "Translation imported."
-  },
   "statusImportFailed": {
     "message": "Import failed: $ARG1$",
     "placeholders": {
@@ -252,27 +210,8 @@
   "errorInvalidJson": {
     "message": "Invalid JSON file."
   },
-  "statusAppliedSuffix": {
-    "message": "$ARG1$, applied.",
-    "placeholders": {
-      "arg1": {
-        "content": "$1"
-      }
-    }
-  },
-  "statusStoredSuffix": {
-    "message": "$ARG1$, stored. Click Apply to show it.",
-    "placeholders": {
-      "arg1": {
-        "content": "$1"
-      }
-    }
-  },
   "errorUnknown": {
     "message": "unknown error"
-  },
-  "errorRestrictedPage": {
-    "message": "This page cannot be translated."
   },
   "providerServer": {
     "message": "any-i18n server"
@@ -448,5 +387,180 @@
         "content": "$1"
       }
     }
+  },
+  "actionStop": {
+    "message": "Stop"
+  },
+  "progressTranslating": {
+    "message": "Translating to $ARG1$ · $ARG2$ / $ARG3$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      },
+      "arg2": {
+        "content": "$2"
+      },
+      "arg3": {
+        "content": "$3"
+      }
+    }
+  },
+  "progressStarting": {
+    "message": "Translating to $ARG1$…",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "progressStopped": {
+    "message": "Stopped. What was translated so far stays."
+  },
+  "progressDone": {
+    "message": "Translated to $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "commandToggle": {
+    "message": "Translate or restore the page"
+  },
+  "popupRestricted": {
+    "message": "The browser does not allow translating this page. Open a regular website to translate it."
+  },
+  "popupTranslateInto": {
+    "message": "Translate into"
+  },
+  "popupOtherPlaceholder": {
+    "message": "Language code or name, e.g. ka or Georgian"
+  },
+  "popupRecent": {
+    "message": "Recent languages"
+  },
+  "popupOtherLanguage": {
+    "message": "Other language…"
+  },
+  "actionShowOriginal": {
+    "message": "Show original"
+  },
+  "popupTools": {
+    "message": "Keys and files"
+  },
+  "popupToolsHint": {
+    "message": "Every string gets a stable key. Export the keys to translate them elsewhere, or import a finished translation file."
+  },
+  "actionApplyStored": {
+    "message": "Apply stored"
+  },
+  "popupOpenSettings": {
+    "message": "Open settings"
+  },
+  "actionTranslateTo": {
+    "message": "Translate to $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "popupTranslatedTo": {
+    "message": "Translated to $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "popupProviderError": {
+    "message": "$ARG1$ is not reachable. Click to set up.",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "popupAlwaysTranslate": {
+    "message": "Always translate $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusImportedCount": {
+    "message": "Imported $ARG1$ translations for $ARG2$.",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      },
+      "arg2": {
+        "content": "$2"
+      }
+    }
+  },
+  "popupShortcutHint": {
+    "message": "$ARG1$ translates or restores any page",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "welcomeHeading": {
+    "message": "Welcome to any-i18n"
+  },
+  "welcomeIntro": {
+    "message": "Connect a model to start translating. A local model keeps page text on your computer."
+  },
+  "actionDetect": {
+    "message": "Search again"
+  },
+  "welcomeCloudHint": {
+    "message": "No local model? Choose a cloud provider below and add its API key."
+  },
+  "welcomeReady": {
+    "message": "Ready. Open any website and translate it."
+  },
+  "statusDetecting": {
+    "message": "Looking for local models…"
+  },
+  "detectFound": {
+    "message": "Running at $ARG1$ · $ARG2$ models",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      },
+      "arg2": {
+        "content": "$2"
+      }
+    }
+  },
+  "detectMissing": {
+    "message": "Not running at $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "detectNone": {
+    "message": "No local model found. Start LM Studio or Ollama, then search again."
+  },
+  "actionUse": {
+    "message": "Use"
+  },
+  "optionsShowToolbar": {
+    "message": "Show the floating translate button on pages"
+  },
+  "optionsShortcutLabel": {
+    "message": "Keyboard shortcut to translate or restore a page:"
+  },
+  "actionChangeShortcut": {
+    "message": "Change"
+  },
+  "shortcutNone": {
+    "message": "not set"
   }
 }

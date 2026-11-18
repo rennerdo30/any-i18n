@@ -24,15 +24,16 @@
 - [x] Dynamic content translated automatically while a language is active
 - [x] UI localized (English, German); light and dark theme
 - [x] Static checks and unit tests for the provider helpers, CI workflow
+- [x] Popup redesign: language names, recent languages, live progress, Stop, provider status
+- [x] Progress pill on the page, toolbar badge, keyboard shortcut (Alt+Shift+T)
+- [x] First-run setup that detects LM Studio and Ollama
+- [x] Floating button switch on the settings page
+- [x] Pinned server dependencies, FastAPI lifespan handler, current default models
 
 ## Next
 - [ ] Make `any-i18n bundle` emit `translations/manifest.json` with the `domains` map and the
       `<domain>/<lang>.json` layout the service worker actually reads
-- [ ] Pin `server/requirements.txt` versions
-- [ ] Replace the deprecated FastAPI `@app.on_event("startup")` with a lifespan handler
-- [ ] Toolbar on/off switch on the settings page (currently `TOOLBAR_ENABLED`)
 - [ ] Automated tests: key generation, scanner filtering, replace/revert round-trip, server batching
-- [ ] Stop button for a running translation
 - [ ] Optional cross-site reuse of translations (same sentence on another site)
 - [ ] Verify the Firefox build end to end
 - [ ] Context-aware translation (preserve inline HTML structure around text)

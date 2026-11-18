@@ -60,7 +60,8 @@ var AnyI18nProviders = (function() {
     visionModel: 'qwen3-vl',
     visionApiKey: '',
     showOriginalOnHover: true,
-    highlightTranslated: false
+    highlightTranslated: false,
+    showToolbar: true
   };
 
   function isKnownProvider(provider) {
@@ -235,6 +236,15 @@ var AnyI18nProviders = (function() {
     return parsed;
   }
 
+  /**
+   * Sampling options for a model. GPT-5 and o-series reasoning models reject any temperature
+   * other than the default, also behind OpenRouter-style "openai/" prefixes.
+   */
+  function samplingOptions(model) {
+    if (/(^|\/)(gpt-5|o\d)/i.test(String(model || ''))) return {};
+    return { temperature: 0.2 };
+  }
+
   /** Extract the assistant text from a chat-completions response body. */
   function replyContent(body) {
     var choice = body && body.choices && body.choices[0];
@@ -293,6 +303,7 @@ var AnyI18nProviders = (function() {
     cleanContent: cleanContent,
     parseBatchReply: parseBatchReply,
     replyContent: replyContent,
+    samplingOptions: samplingOptions,
     describeHttpError: describeHttpError,
     modelIds: modelIds
   };
