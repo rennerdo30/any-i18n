@@ -12,19 +12,14 @@ var MESSAGES = {
   TRANSLATE_KEYS: 'TRANSLATE_KEYS',
   GET_AUTO_TRANSLATE: 'GET_AUTO_TRANSLATE',
   SET_AUTO_TRANSLATE: 'SET_AUTO_TRANSLATE',
-  REMOVE_AUTO_TRANSLATE: 'REMOVE_AUTO_TRANSLATE'
+  REMOVE_AUTO_TRANSLATE: 'REMOVE_AUTO_TRANSLATE',
+  TRANSLATE_PAGE: 'TRANSLATE_PAGE'
 };
 
-var CONTENT_SCRIPT_FILES = [
-  'shared/constants.js',
-  'shared/utils.js',
-  'shared/storage.js',
-  'content/key-generator.js',
-  'content/dom-scanner.js',
-  'content/text-replacer.js',
-  'content/mutation-handler.js',
-  'content/content-script.js'
-];
+// Same files, same order as the manifest's content script (injected when the tab has none yet)
+var CONTENT_SCRIPTS = (browser.runtime.getManifest().content_scripts || [])[0] || { js: [], css: [] };
+
+localizePage();
 
 var domainEl = document.getElementById('domain');
 var languageInput = document.getElementById('language-input');
@@ -56,6 +51,49 @@ function showStatus(message, type) {
   statusEl.className = 'status ' + type;
 }
 
+function errorText(err) {
+  return (err && err.message) || t('errorUnknown', undefined, 'unknown error');
+}
+
+// chrome://, the web store and similar pages refuse script injection
+function isRestrictedPageError(err) {
+  var message = (err && err.message) || '';
+  return /cannot be scripted|cannot access|extensions gallery|chrome:\/\/|Missing host permission/i.test(message);
+}
+
+/** "Translated 12 strings, 30 already stored, 1 failed" */
+function summarizeResult(result) {
+  var parts = [t('statusTranslatedCount', [String(result.translated || 0)])];
+  if (result.cached > 0) parts.push(t('statusFromCache', [String(result.cached)]));
+  if (result.failed > 0) parts.push(t('statusFailedCount', [String(result.failed)]));
+  return parts.join(', ');
+}
+
+var PROVIDER_LABELS = {
+  server: 'providerServer',
+  lmstudio: 'providerLmstudio',
+  ollama: 'providerOllama',
+  openai: 'providerOpenai',
+  deepseek: 'providerDeepseek'
+};
+
+function openSettings() {
+  browser.runtime.openOptionsPage();
+  window.close();
+}
+
+document.getElementById('settings-btn').addEventListener('click', openSettings);
+
+var providerLineEl = document.getElementById('provider-line');
+providerLineEl.addEventListener('click', openSettings);
+sendToBackground({ type: 'GET_PROVIDER' }).then(function(response) {
+  if (!response || !response.provider) return;
+  var label = t(PROVIDER_LABELS[response.provider] || 'providerServer');
+  if (response.model) label += ' \u00b7 ' + response.model;
+  providerLineEl.textContent = t('popupProviderVia', [label]);
+  providerLineEl.title = response.baseUrl || '';
+}).catch(function() {});
+
 function clearStatus() {
   statusEl.className = 'status hidden';
   statusEl.textContent = '';
@@ -76,7 +114,7 @@ function ensureContentScript() {
       // Content script not loaded — inject it programmatically
       return browser.scripting.executeScript({
         target: { tabId: currentTabId },
-        files: CONTENT_SCRIPT_FILES
+        files: CONTENT_SCRIPTS.js
       }).then(function() {
         contentScriptReady = true;
       });
@@ -147,11 +185,11 @@ var applyLabel = applyBtn.querySelector('.apply-label');
 
 function updateApplyButton() {
   if (isTranslationApplied) {
-    if (applyLabel) applyLabel.textContent = 'Revert';
+    if (applyLabel) applyLabel.textContent = t('actionRevert', undefined, 'Revert');
     applyBtn.classList.remove('btn-success');
     applyBtn.classList.add('btn-danger');
   } else {
-    if (applyLabel) applyLabel.textContent = 'Apply';
+    if (applyLabel) applyLabel.textContent = t('actionApply', undefined, 'Apply');
     applyBtn.classList.remove('btn-danger');
     applyBtn.classList.add('btn-success');
   }
@@ -185,7 +223,7 @@ function renderKeys(keys) {
   if (entries.length === 0) {
     var empty = document.createElement('div');
     empty.className = 'keys-empty';
-    empty.textContent = 'No keys scanned yet.';
+    empty.textContent = t('popupNoKeys', undefined, 'No keys scanned yet.');
     keysBodyEl.appendChild(empty);
     return;
   }
@@ -269,7 +307,7 @@ browser.tabs.query({ active: true, currentWindow: true }).then(function(tabs) {
   sendToBackground({ type: MESSAGES.GET_AUTO_TRANSLATE, domain: domainEl.textContent }).then(function(response) {
     if (response && response.config && response.config.enabled) {
       autoTranslateToggle.checked = true;
-      autoTranslateLangEl.textContent = 'Auto: ' + response.config.language;
+      autoTranslateLangEl.textContent = t('autoIndicator', [response.config.language], 'Auto: ' + response.config.language);
       if (response.config.language) {
         languageInput.value = response.config.language;
         updateTranslateButton();
@@ -282,17 +320,17 @@ browser.tabs.query({ active: true, currentWindow: true }).then(function(tabs) {
 scanBtn.addEventListener('click', function() {
   clearStatus();
   scanBtn.disabled = true;
-  if (scanLabel) scanLabel.textContent = 'Scanning...';
+  if (scanLabel) scanLabel.textContent = t('statusScanning', undefined, 'Scanning…');
 
   scanPage().then(function() {
     scanBtn.disabled = false;
-    if (scanLabel) scanLabel.textContent = 'Scan Page';
-    showStatus('Found ' + keyCountEl.textContent + ' translatable text nodes.', 'success');
+    if (scanLabel) scanLabel.textContent = t('actionScan', undefined, 'Scan page');
+    showStatus(t('statusScanFound', [keyCountEl.textContent]), 'success');
     updateTranslateButton();
   }).catch(function(err) {
     scanBtn.disabled = false;
-    if (scanLabel) scanLabel.textContent = 'Scan Page';
-    showStatus('Scan failed: ' + (err.message || 'unknown error'), 'error');
+    if (scanLabel) scanLabel.textContent = t('actionScan', undefined, 'Scan page');
+    showStatus(t('statusScanFailed', [errorText(err)]), 'error');
   });
 });
 
@@ -305,15 +343,15 @@ applyBtn.addEventListener('click', function() {
       if (response && response.success) {
         isTranslationApplied = false;
         updateApplyButton();
-        showStatus('Translation reverted.', 'info');
+        showStatus(t('statusReverted', undefined, 'Translation reverted.'), 'info');
       }
     }).catch(function(err) {
-      showStatus('Revert failed: ' + (err.message || 'unknown error'), 'error');
+      showStatus(t('statusRevertFailed', [errorText(err)]), 'error');
     });
   } else {
     var lang = languageInput.value.trim();
     if (!lang) {
-      showStatus('Please enter a language first.', 'error');
+      showStatus(t('errorNoLanguage', undefined, 'Enter a language first.'), 'error');
       return;
     }
 
@@ -323,13 +361,13 @@ applyBtn.addEventListener('click', function() {
       if (response && response.success) {
         isTranslationApplied = true;
         updateApplyButton();
-        showStatus('Translation applied (' + lang + ').', 'success');
+        showStatus(t('statusApplied', [lang]), 'success');
       } else {
-        showStatus(response && response.error ? response.error : 'No translations found for this language.', 'error');
+        showStatus(t('statusNoTranslations', undefined, 'No translations for this language yet.'), 'error');
       }
     }).catch(function(err) {
       applyBtn.disabled = false;
-      showStatus('Apply failed: ' + (err.message || 'unknown error'), 'error');
+      showStatus(t('statusApplyFailed', [errorText(err)]), 'error');
     });
   }
 });
@@ -349,10 +387,10 @@ exportBtn.addEventListener('click', function() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      showStatus('Keys exported as _keys.json', 'success');
+      showStatus(t('statusExported', undefined, 'Keys exported as _keys.json'), 'success');
     }
   }).catch(function(err) {
-    showStatus('Export failed: ' + (err.message || 'unknown error'), 'error');
+    showStatus(t('statusExportFailed', [errorText(err)]), 'error');
   });
 });
 
@@ -372,20 +410,20 @@ importInput.addEventListener('change', function(e) {
         data: data
       }).then(function(response) {
         if (response && response.success) {
-          showStatus('Translation imported successfully.', 'success');
+          showStatus(t('statusImported', undefined, 'Translation imported.'), 'success');
           sendToBackground({ type: MESSAGES.GET_LANGUAGES, domain: domainEl.textContent }).then(function(resp) {
             if (resp && resp.languages) {
               populateLanguages(resp.languages);
             }
           });
         } else {
-          showStatus(response && response.error ? response.error : 'Import failed.', 'error');
+          showStatus(t('statusImportFailed', [response && response.error ? response.error : t('errorUnknown')]), 'error');
         }
       }).catch(function(err) {
-        showStatus('Import failed: ' + (err.message || 'unknown error'), 'error');
+        showStatus(t('statusImportFailed', [errorText(err)]), 'error');
       });
     } catch (parseErr) {
-      showStatus('Invalid JSON file.', 'error');
+      showStatus(t('errorInvalidJson', undefined, 'Invalid JSON file.'), 'error');
     }
   };
   reader.readAsText(file);
@@ -412,8 +450,8 @@ browser.storage.onChanged.addListener(function(changes) {
   // Handle partial (streaming) results
   if (result.partial) {
     var soFar = Object.keys(result.translations || {}).length;
-    if (translateLabel) translateLabel.textContent = 'Translating...';
-    showStatus('Translating... ' + soFar + ' keys so far', 'info');
+    if (translateLabel) translateLabel.textContent = t('statusTranslating', undefined, 'Translating…');
+    showStatus(t('statusProgress', [String(soFar)]), 'info');
 
     // Progressively apply translations
     var lang = languageInput.value.trim();
@@ -432,26 +470,23 @@ browser.storage.onChanged.addListener(function(changes) {
   browser.storage.local.remove('_translateResult');
 
   translateBtn.disabled = false;
-  if (translateLabel) translateLabel.textContent = 'Translate';
+  if (translateLabel) translateLabel.textContent = t('actionTranslate', undefined, 'Translate');
 
   if (result.success) {
     var lang = languageInput.value.trim();
-    var msg = 'Translated ' + (result.translated || 0) + ' keys';
-    if (result.cached > 0) {
-      msg += ' (' + result.cached + ' from cache)';
-    }
+    var msg = summarizeResult(result);
 
     // Auto-apply translations to the page
     sendToContentScript({ type: MESSAGES.APPLY_TRANSLATION, language: lang }).then(function(applyResp) {
       if (applyResp && applyResp.success) {
         isTranslationApplied = true;
         updateApplyButton();
-        showStatus(msg + ' — applied!', 'success');
+        showStatus(t('statusAppliedSuffix', [msg]), 'success');
       } else {
-        showStatus(msg + ' (stored, click Apply)', 'success');
+        showStatus(t('statusStoredSuffix', [msg]), 'success');
       }
     }).catch(function() {
-      showStatus(msg + ' (stored, click Apply)', 'success');
+      showStatus(t('statusStoredSuffix', [msg]), 'success');
     });
 
     // Refresh languages list
@@ -464,7 +499,7 @@ browser.storage.onChanged.addListener(function(changes) {
 
     applyBtn.disabled = false;
   } else {
-    showStatus(result.error || 'Translation failed.', 'error');
+    showStatus(result.error || t('statusTranslateFailed', undefined, 'Translation failed.'), 'error');
   }
 });
 
@@ -476,7 +511,7 @@ autoTranslateToggle.addEventListener('change', function() {
   if (autoTranslateToggle.checked) {
     var lang = languageInput.value.trim();
     if (!lang) {
-      showStatus('Please enter a language first.', 'error');
+      showStatus(t('errorNoLanguage', undefined, 'Enter a language first.'), 'error');
       autoTranslateToggle.checked = false;
       return;
     }
@@ -485,7 +520,7 @@ autoTranslateToggle.addEventListener('change', function() {
       domain: domain,
       language: lang
     }).then(function() {
-      autoTranslateLangEl.textContent = 'Auto: ' + lang;
+      autoTranslateLangEl.textContent = t('autoIndicator', [lang], 'Auto: ' + lang);
     });
   } else {
     sendToBackground({
@@ -509,51 +544,58 @@ languageInput.addEventListener('change', function() {
     domain: domain,
     language: lang
   }).then(function() {
-    autoTranslateLangEl.textContent = 'Auto: ' + lang;
+    autoTranslateLangEl.textContent = t('autoIndicator', [lang], 'Auto: ' + lang);
   });
 });
 
-// Translate via server (auto-scans if needed)
+function resetTranslateButton() {
+  translateBtn.disabled = false;
+  if (translateLabel) translateLabel.textContent = t('actionTranslate', undefined, 'Translate');
+}
+
+// Translate: the page scans itself, applies what is stored and requests only the missing keys.
+// It also applies the results, so the translation completes even if the popup is closed.
 translateBtn.addEventListener('click', function() {
   clearStatus();
   var lang = languageInput.value.trim();
   if (!lang) {
-    showStatus('Please enter a language first.', 'error');
+    showStatus(t('errorNoLanguage', undefined, 'Enter a language first.'), 'error');
     return;
   }
 
   translateBtn.disabled = true;
-  if (translateLabel) translateLabel.textContent = 'Scanning...';
+  if (translateLabel) translateLabel.textContent = t('statusScanning', undefined, 'Scanning…');
 
-  // Get keys — auto-scan if we don't have them
-  var keysPromise;
-  if (collectedKeys && Object.keys(collectedKeys).length > 0) {
-    keysPromise = Promise.resolve(collectedKeys);
-  } else {
-    keysPromise = scanPage();
-  }
-
-  keysPromise.then(function(keys) {
-    if (!keys || Object.keys(keys).length === 0) {
-      translateBtn.disabled = false;
-      if (translateLabel) translateLabel.textContent = 'Translate';
-      showStatus('No translatable text found on this page.', 'error');
+  sendToContentScript({ type: MESSAGES.TRANSLATE_PAGE, language: lang, source: 'popup' }).then(function(response) {
+    if (!response || !response.keyCount) {
+      resetTranslateButton();
+      showStatus(t('errorNoText', undefined, 'No translatable text found on this page.'), 'error');
       return;
     }
 
-    if (translateLabel) translateLabel.textContent = 'Translating...';
+    keyCountEl.textContent = response.keyCount;
+    exportBtn.disabled = false;
+    applyBtn.disabled = false;
+    sendToContentScript({ type: MESSAGES.GET_KEYS }).then(function(keysResp) {
+      if (keysResp && keysResp.keys) renderKeys(keysResp.keys);
+    }).catch(function() {});
 
-    // Fire-and-forget — result comes back via storage.onChanged
-    sendToBackground({
-      type: MESSAGES.TRANSLATE_KEYS,
-      keys: keys,
-      language: lang,
-      domain: domainEl.textContent,
-      source: 'popup'
-    });
+    if (response.requested === 0) {
+      // Everything is stored already; the page applied it.
+      resetTranslateButton();
+      isTranslationApplied = true;
+      updateApplyButton();
+      showStatus(t('statusAppliedSuffix', [summarizeResult({ translated: 0, cached: response.stored })]), 'success');
+      return;
+    }
+
+    // The result comes back through storage.onChanged
+    if (translateLabel) translateLabel.textContent = t('statusTranslating', undefined, 'Translating…');
   }).catch(function(err) {
     translateBtn.disabled = false;
-    if (translateLabel) translateLabel.textContent = 'Translate';
-    showStatus('Translation failed: ' + (err.message || 'unknown error'), 'error');
+    if (translateLabel) translateLabel.textContent = t('actionTranslate', undefined, 'Translate');
+    showStatus(isRestrictedPageError(err)
+      ? t('errorRestrictedPage', undefined, 'This page cannot be translated.')
+      : t('statusTranslateFailed', undefined, 'Translation failed.') + ' ' + errorText(err), 'error');
   });
 });

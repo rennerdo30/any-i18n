@@ -10,7 +10,7 @@ files by hand; the server and the CLI are optional helpers that produce those fi
 
 ## Requirements
 
-- A Chromium-based browser (Chrome, Edge) or Firefox 109+ for the extension
+- Chrome or Edge 116+, or Firefox 128+ (everything except the built-in image OCR), for the extension
 - **Node.js 22.12+** for the CLI and the build script
 - **Python 3.10+** for the translation server (`dict[str, str]` type syntax is used)
 
@@ -36,19 +36,28 @@ directly by the manifest, with no bundler and no build step for development.
   </TabItem>
   <TabItem label="Firefox">
     <Steps>
-      1. Open `about:debugging#/runtime/this-firefox`.
-      2. Click **Load Temporary Add-on**.
-      3. Select `extension/manifest.json`.
+      1. Run `npm run build:firefox`.
+      2. Open `about:debugging#/runtime/this-firefox`.
+      3. Click **Load Temporary Add-on**.
+      4. Select `dist/firefox/manifest.json`.
     </Steps>
 
-    Temporary add-ons are removed when Firefox restarts. For a persistent install, build a
-    Firefox package first (see below) — the build adds the required
-    `browser_specific_settings.gecko` block.
+    Firefox needs the build: it runs the background code as an event page instead of a service
+    worker, and the build also adds the `browser_specific_settings.gecko` block and drops the
+    offscreen OCR, which Firefox does not support. Temporary add-ons are removed when Firefox
+    restarts.
   </TabItem>
 </Tabs>
 
-The extension requests only `storage`, `activeTab`, and `scripting`, plus host access to
-`http://localhost:39418/*` so it can talk to a translation server running on your own machine.
+The extension requests `storage`, `activeTab`, `scripting`, `contextMenus` and `offscreen`, plus
+host access to `localhost`, `127.0.0.1` and `https://` hosts so it can reach your model; see
+[Permissions](/any-i18n/guides/extension/#permissions).
+
+## Choose a provider
+
+Open the popup, press the gear button and pick a provider: LM Studio or Ollama on your machine, a
+hosted API such as OpenAI, DeepSeek or OpenRouter, or the any-i18n server below. Press **Test
+connection**, and you are ready to translate. Details: [Translation Providers](/any-i18n/guides/providers/).
 
 ## Start the translation server (optional)
 

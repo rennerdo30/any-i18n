@@ -1,24 +1,39 @@
 {
   "manifest_version": 3,
-  "name": "any-i18n",
-  "version": "1.0.0",
-  "description": "Add multilanguage i18n support to any website",
-  "permissions": ["storage", "activeTab", "scripting"],
-  "host_permissions": ["http://localhost:39418/*"],
+  "name": "__MSG_extName__",
+  "version": "2.0.0",
+  "description": "__MSG_extDescription__",
+  "default_locale": "en",
+  "minimum_chrome_version": "116",
+  "permissions": ["storage", "activeTab", "scripting", "contextMenus", "offscreen"],
+  "host_permissions": [
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "https://*/*"
+  ],
+  "optional_host_permissions": ["http://*/*"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
   "action": {
     "default_popup": "popup/popup.html",
+    "default_title": "__MSG_extName__",
     "default_icon": {
       "16": "icons/icon-16.png",
       "48": "icons/icon-48.png",
       "128": "icons/icon-128.png"
     }
   },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
   "background": {
     "service_worker": "background/service-worker.js"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": ["http://*/*", "https://*/*"],
       "js": [
         "shared/constants.js",
         "shared/utils.js",
@@ -27,6 +42,7 @@
         "content/dom-scanner.js",
         "content/text-replacer.js",
         "content/mutation-handler.js",
+        "content/page-ui.js",
         "content/content-script.js",
         "content/toolbar.js"
       ],

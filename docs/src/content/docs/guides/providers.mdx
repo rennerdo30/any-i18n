@@ -1,0 +1,93 @@
+---
+title: Translation Providers
+description: Translate with LM Studio, Ollama, OpenAI, DeepSeek, OpenRouter or the any-i18n server, and translate text inside images.
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+
+The extension translates through one provider at a time, chosen on the settings page (gear icon in
+the popup, or **Extension options**). Every provider except the any-i18n server is called directly
+from the extension's service worker through the OpenAI Chat Completions API, so no server is needed.
+
+| Provider | Default endpoint | API key | Defaults (strings per request / parallel) |
+| --- | --- | --- | --- |
+| LM Studio | `http://localhost:1234` | no | 10 / 1 |
+| Ollama | `http://localhost:11434` | no | 10 / 1 |
+| OpenAI compatible | `https://api.openai.com` | yes | 20 / 4 |
+| DeepSeek | `https://api.deepseek.com` | yes | 20 / 4 |
+| any-i18n server | `http://localhost:39418` | no | set on the server |
+
+**OpenRouter** and other OpenAI-compatible services use the *OpenAI compatible* entry with their own
+base URL, for example `https://openrouter.ai/api/v1`. The endpoint field accepts a bare host, a base
+ending in `/v1`, or the full `/v1/chat/completions` URL.
+
+## Setting up a local model
+
+<Steps>
+1. **LM Studio**: load a model, start the local server and enable **CORS** in its settings.
+   Leave the model field empty to use whatever model is loaded.
+2. **Ollama**: allow browser requests and start the server:
+
+   ```bash
+   OLLAMA_ORIGINS="*" ollama serve
+   ollama pull qwen3
+   ```
+3. Press **Test connection** on the settings page. On success the model field suggests every model
+   the server reports.
+</Steps>
+
+<Aside type="note" title="Models on another machine">
+  `localhost`, `127.0.0.1` and every `https://` host work out of the box. A plain-HTTP endpoint on
+  another machine (an Ollama box on your LAN) needs a host permission, which the browser asks for
+  when you press **Test connection** or **Load models**.
+</Aside>
+
+## How a batch is translated
+
+1. The keys the site has no stored translation for are collected and de-duplicated by text.
+2. They are split into batches by count (*Strings per request*) and by size (about 6,000 characters).
+3. Each batch is sent as a JSON array, and the model must reply with a JSON array of the same length.
+   Reasoning blocks (`<think>…</think>`) and Markdown code fences around the reply are ignored.
+4. A reply that does not line up is retried once; if it still does not line up, every string of the
+   batch is translated on its own.
+5. Up to *Parallel requests* batches run at the same time. Every finished batch is stored and applied
+   immediately, so long pages fill in progressively.
+
+The target language can be a code (`de`, `pt-BR`, `zh-Hant`) or a name (`German`). Codes are turned
+into English language names for the prompt.
+
+Strings already being translated are not requested a second time, for example when the popup and
+dynamic content ask for the same text, or when two tabs of one site are open.
+
+## Recommended models
+
+| Provider | Recommended | Alternatives |
+| --- | --- | --- |
+| DeepSeek | `deepseek-v4-flash` | `deepseek-v4-pro` (higher quality) |
+| OpenAI | `gpt-5-mini` | `gpt-5-nano` (cheapest), `gpt-5.4-mini` |
+| Ollama | `qwen3` | `llama3.3`, `gemma3` |
+| LM Studio | the loaded model | |
+
+## The any-i18n server
+
+Choosing **any-i18n server** sends keys to `POST /api/translate/stream` (falling back to
+`POST /api/translate`) instead. The server batches, caches in SQLite and can use local CLI tools as the
+model. See [Translation Server](/any-i18n/guides/server/).
+
+## Image translation
+
+Right-click an image and choose **Translate image text**. The text is extracted first, then translated
+by the selected provider and shown in a panel below the image (with the original text underneath).
+
+| Extraction mode | Needs | Notes |
+| --- | --- | --- |
+| Built-in OCR (default) | Chrome or Edge | Bundled Tesseract.js running in an offscreen document. Set the languages as `+`-joined Tesseract codes, e.g. `eng+deu+jpn`; the language data is downloaded once from the tessdata CDN and cached. |
+| Vision model | an OpenAI-compatible endpoint with a vision model | For example `qwen3-vl` on Ollama. DeepSeek's hosted API is text only. |
+
+Results are cached per image URL, provider, model, extraction setup and language (up to 200 images).
+
+## Privacy
+
+API keys and all settings are kept in `browser.storage.local` and never synced. Page text goes only
+to the endpoint you configure: with LM Studio, Ollama or the local server it never leaves your
+machine.

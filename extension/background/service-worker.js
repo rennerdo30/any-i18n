@@ -1,172 +1,285 @@
 // Browser API compatibility shim
 if (typeof browser === 'undefined') var browser = chrome;
 
-var TRANSLATION_SERVER_URL = 'http://localhost:39418';
+// Chrome runs this file as a service worker; Firefox loads shared/providers.js first through
+// background.scripts (see scripts/build.js).
+if (typeof AnyI18nProviders === 'undefined' && typeof importScripts === 'function') {
+  importScripts('../shared/providers.js');
+}
 
 /**
  * Background service worker for the any-i18n extension.
- * Handles translation management, import/export, and lifecycle events.
+ *
+ * - Translates page keys, either through the any-i18n server (SSE stream) or directly against an
+ *   OpenAI-compatible provider (LM Studio, Ollama, OpenAI, DeepSeek, OpenRouter, ...).
+ * - Imports translation files and indexes bundled translations.
+ * - Context menu: translate the page, translate an image (OCR + translation).
+ *
+ * Long-running results are written to storage (`_translateResult`) instead of being returned
+ * through the message port, which closes before slow model calls finish.
  */
 
-/**
- * Initialize default settings on first install.
- */
+var Providers = AnyI18nProviders;
+
+var SETTINGS_KEY = 'providerSettings';
+var LAST_LANGUAGE_KEY = 'lastLanguage';
+var IMAGE_CACHE_KEY = 'imageCache';
+var MAX_IMAGE_CACHE_ENTRIES = 200;
+
+var REQUEST_TIMEOUT_MS = 90000;      // Local models can take a while for a full batch
+var MODELS_TIMEOUT_MS = 10000;
+var IMAGE_FETCH_TIMEOUT_MS = 15000;
+var VISION_TIMEOUT_MS = 120000;
+var IMAGE_MAX_DIMENSION = 1600;      // Downscale larger images before OCR / vision
+var NO_TEXT_MARKER = 'NO_TEXT';
+
+var MENU_TRANSLATE_PAGE = 'anyi18n-translate-page';
+var MENU_TRANSLATE_IMAGE = 'anyi18n-translate-image';
+
+function t(key, substitutions, fallback) {
+  var message = browser.i18n.getMessage(key, substitutions);
+  return message || fallback || key;
+}
+
+// ---------------------------------------------------------------------------
+// Lifecycle
+// ---------------------------------------------------------------------------
+
 browser.runtime.onInstalled.addListener(function(details) {
   if (details.reason === 'install') {
-    // Set default settings
     browser.storage.local.set({
       settings: {
         enabled: true,
-        autoScan: true,
-        highlightTranslated: false
+        autoScan: true
       },
       translations: {},
       domainKeys: {}
     });
-
-    // Index any bundled translations
     indexBundledTranslations();
   }
+
+  // Installs from before direct providers existed keep using the translation server.
+  browser.storage.local.get(SETTINGS_KEY).then(function(stored) {
+    if (stored && stored[SETTINGS_KEY]) return;
+    var initial = { provider: details.reason === 'install' ? 'lmstudio' : Providers.SERVER_PROVIDER };
+    return browser.storage.local.set({ [SETTINGS_KEY]: initial });
+  });
+
+  createContextMenus();
 });
+
+function createContextMenus() {
+  if (!browser.contextMenus) return;
+  Promise.resolve(browser.contextMenus.removeAll()).then(function() {
+    browser.contextMenus.create({
+      id: MENU_TRANSLATE_PAGE,
+      title: t('menuTranslatePage', undefined, 'Translate page'),
+      contexts: ['page', 'selection']
+    });
+    browser.contextMenus.create({
+      id: MENU_TRANSLATE_IMAGE,
+      title: t('menuTranslateImage', undefined, 'Translate image text'),
+      contexts: ['image']
+    });
+  });
+}
 
 /**
  * Index bundled translations from the extension's translations directory.
  * Reads the manifest.json file that lists available domains and languages.
  */
 function indexBundledTranslations() {
-  // Attempt to load the translations manifest
   fetch(browser.runtime.getURL('translations/manifest.json'))
     .then(function(response) {
       if (!response.ok) return null;
       return response.json();
     })
     .then(function(manifest) {
-      if (!manifest || !manifest.domains) return;
+      if (!manifest || !manifest.domains) return null;
 
-      var domains = Object.keys(manifest.domains);
       var loadPromises = [];
-
-      domains.forEach(function(domain) {
-        var domainConfig = manifest.domains[domain];
-        var languages = domainConfig.languages || [];
-
+      Object.keys(manifest.domains).forEach(function(domain) {
+        var languages = manifest.domains[domain].languages || [];
         languages.forEach(function(lang) {
-          var translationUrl = browser.runtime.getURL(
-            'translations/' + domain + '/' + lang + '.json'
-          );
-
-          var promise = fetch(translationUrl)
-            .then(function(response) {
-              if (!response.ok) return null;
-              return response.json();
-            })
+          var url = browser.runtime.getURL('translations/' + domain + '/' + lang + '.json');
+          loadPromises.push(fetch(url)
+            .then(function(response) { return response.ok ? response.json() : null; })
             .then(function(data) {
-              if (data && data.translations) {
-                return {
-                  domain: domain,
-                  language: lang,
-                  translations: data.translations
-                };
-              }
-              return null;
+              return data && data.translations
+                ? { domain: domain, language: lang, translations: data.translations }
+                : null;
             })
-            .catch(function() {
-              return null;
-            });
-
-          loadPromises.push(promise);
+            .catch(function() { return null; }));
         });
       });
-
       return Promise.all(loadPromises);
     })
     .then(function(results) {
-      if (!results) return;
-
-      // Store all loaded translations
-      browser.storage.local.get('translations').then(function(stored) {
-        var allTranslations = (stored && stored.translations) || {};
-
+      if (!results) return null;
+      return browser.storage.local.get('translations').then(function(stored) {
+        var all = (stored && stored.translations) || {};
         results.forEach(function(result) {
           if (!result) return;
-          if (!allTranslations[result.domain]) {
-            allTranslations[result.domain] = {};
-          }
-          allTranslations[result.domain][result.language] = result.translations;
+          all[result.domain] = all[result.domain] || {};
+          // Bundled files never overwrite translations the user already has.
+          all[result.domain][result.language] =
+            Object.assign({}, result.translations, all[result.domain][result.language] || {});
         });
-
-        browser.storage.local.set({ translations: allTranslations });
+        return browser.storage.local.set({ translations: all });
       });
     })
-    .catch(function(err) {
-      // Manifest not found or failed to load - this is fine for fresh installs
+    .catch(function() {
+      // No bundled translations: normal for development installs.
     });
 }
 
-/**
- * Listen for messages from content scripts and popup.
- */
+// ---------------------------------------------------------------------------
+// Settings and storage helpers
+// ---------------------------------------------------------------------------
+
+function loadProvider() {
+  return browser.storage.local.get(SETTINGS_KEY).then(function(stored) {
+    return Providers.resolve(stored && stored[SETTINGS_KEY]);
+  });
+}
+
+// Serialize read-modify-write cycles on storage: parallel batches would otherwise drop entries.
+var storageQueue = Promise.resolve();
+
+function queueStorage(task) {
+  var run = storageQueue.then(task);
+  storageQueue = run.catch(function(error) {
+    console.error('any-i18n: storage write failed', error);
+  });
+  return run;
+}
+
+/** Merge translations for a domain/language into storage. */
+function storeTranslations(domain, language, translations) {
+  return queueStorage(function() {
+    return browser.storage.local.get('translations').then(function(stored) {
+      var all = (stored && stored.translations) || {};
+      all[domain] = all[domain] || {};
+      all[domain][language] = Object.assign({}, all[domain][language] || {}, translations);
+      return browser.storage.local.set({ translations: all });
+    });
+  });
+}
+
+function getStoredTranslations(domain, language) {
+  return browser.storage.local.get('translations').then(function(stored) {
+    var all = (stored && stored.translations) || {};
+    return (all[domain] && all[domain][language]) || {};
+  });
+}
+
+function publishResult(result) {
+  return queueStorage(function() {
+    return browser.storage.local.set({ _translateResult: result });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Messages
+// ---------------------------------------------------------------------------
+
 browser.runtime.onMessage.addListener(function(message, sender, sendResponse) {
+  if (!message || !message.type) return undefined;
+
   switch (message.type) {
-
     case 'GET_LANGUAGES':
-      // Return available languages for a given domain
       browser.storage.local.get('translations').then(function(stored) {
-        var allTranslations = (stored && stored.translations) || {};
-        var domain = message.domain;
-        var languages = [];
-
-        if (allTranslations[domain]) {
-          languages = Object.keys(allTranslations[domain]);
-        }
-
-        sendResponse({ languages: languages });
+        var all = (stored && stored.translations) || {};
+        sendResponse({ languages: all[message.domain] ? Object.keys(all[message.domain]) : [] });
       });
-      return true; // Async response
+      return true;
 
     case 'IMPORT_TRANSLATIONS':
-      // Import translation data from uploaded JSON
       handleImportTranslations(message).then(sendResponse);
-      return true; // Async response
+      return true;
 
     case 'TRANSLATE_KEYS':
-      // Translate keys via the translation server
-      // Store result in storage since the message port may close during long LLM calls
-      var translateSource = message.source || 'unknown';
+      if (message.language) {
+        browser.storage.local.set({ [LAST_LANGUAGE_KEY]: message.language });
+      }
       handleTranslateKeys(message).then(function(result) {
-        result.source = translateSource;
-        browser.storage.local.set({ _translateResult: result });
+        result.source = message.source || 'unknown';
+        result.domain = message.domain;
+        result.language = message.language;
+        return publishResult(result);
       });
       sendResponse({ started: true });
-      break;
+      return undefined;
 
     case 'GET_AUTO_TRANSLATE':
       browser.storage.local.get('autoTranslate').then(function(stored) {
         var all = (stored && stored.autoTranslate) || {};
         sendResponse({ config: all[message.domain] || null });
       });
-      return true; // Async response
+      return true;
 
     case 'SET_AUTO_TRANSLATE':
       browser.storage.local.get('autoTranslate').then(function(stored) {
         var all = (stored && stored.autoTranslate) || {};
         all[message.domain] = { language: message.language, enabled: true };
-        browser.storage.local.set({ autoTranslate: all }).then(function() {
-          sendResponse({ success: true });
-        });
+        return browser.storage.local.set({ autoTranslate: all });
+      }).then(function() {
+        sendResponse({ success: true });
       });
-      return true; // Async response
+      return true;
 
     case 'REMOVE_AUTO_TRANSLATE':
       browser.storage.local.get('autoTranslate').then(function(stored) {
         var all = (stored && stored.autoTranslate) || {};
         delete all[message.domain];
-        browser.storage.local.set({ autoTranslate: all }).then(function() {
-          sendResponse({ success: true });
+        return browser.storage.local.set({ autoTranslate: all });
+      }).then(function() {
+        sendResponse({ success: true });
+      });
+      return true;
+
+    case 'GET_PROVIDER':
+      loadProvider().then(function(resolved) {
+        sendResponse({ provider: resolved.provider, model: resolved.model, baseUrl: resolved.baseUrl });
+      });
+      return true;
+
+    case 'LIST_MODELS':
+      listModels(message.provider, message.baseUrl, message.apiKey)
+        .then(function(models) { sendResponse({ success: true, models: models }); })
+        .catch(function(error) { sendResponse({ success: false, error: error.message }); });
+      return true;
+
+    case 'TEST_CONNECTION':
+      testConnection(message.provider, message.baseUrl, message.apiKey)
+        .then(function(info) { sendResponse(Object.assign({ success: true }, info)); })
+        .catch(function(error) { sendResponse({ success: false, error: error.message }); });
+      return true;
+
+    case 'GET_CACHE_STATS':
+      browser.storage.local.get(['translations', IMAGE_CACHE_KEY]).then(function(stored) {
+        var all = (stored && stored.translations) || {};
+        var strings = 0;
+        Object.keys(all).forEach(function(domain) {
+          Object.keys(all[domain]).forEach(function(lang) {
+            strings += Object.keys(all[domain][lang] || {}).length;
+          });
+        });
+        sendResponse({
+          domains: Object.keys(all).length,
+          strings: strings,
+          images: Object.keys((stored && stored[IMAGE_CACHE_KEY]) || {}).length
         });
       });
-      return true; // Async response
+      return true;
+
+    case 'CLEAR_CACHE':
+      browser.storage.local.set({ translations: {}, [IMAGE_CACHE_KEY]: {} }).then(function() {
+        sendResponse({ success: true });
+      });
+      return true;
   }
+  return undefined;
 });
 
 /**
@@ -181,7 +294,8 @@ function handleImportTranslations(message) {
   if (!data || !data._meta || !data._meta.domain || !data._meta.language || !data.translations) {
     return Promise.resolve({
       success: false,
-      error: 'Invalid translation file format. Expected _meta (with domain, language) and translations.'
+      error: t('errorImportFormat', undefined,
+        'Invalid translation file format. Expected _meta (with domain, language) and translations.')
     });
   }
 
@@ -189,16 +303,7 @@ function handleImportTranslations(message) {
   var language = data._meta.language;
   var translations = data.translations;
 
-  return browser.storage.local.get('translations').then(function(stored) {
-    var allTranslations = (stored && stored.translations) || {};
-
-    if (!allTranslations[domain]) {
-      allTranslations[domain] = {};
-    }
-    allTranslations[domain][language] = translations;
-
-    return browser.storage.local.set({ translations: allTranslations });
-  }).then(function() {
+  return storeTranslations(domain, language, translations).then(function() {
     return {
       success: true,
       domain: domain,
@@ -207,6 +312,56 @@ function handleImportTranslations(message) {
     };
   });
 }
+
+// ---------------------------------------------------------------------------
+// Translation: dispatch
+// ---------------------------------------------------------------------------
+
+// Keys currently being translated, per domain and language. A second request for the same keys
+// (popup and dynamic content at once, two tabs of one site) does not pay for them twice.
+var inFlight = {};
+
+function handleTranslateKeys(message) {
+  if (!message.keys || !message.language || !message.domain) {
+    return Promise.resolve({ success: false, error: 'Missing keys, language, or domain.' });
+  }
+
+  var scope = message.domain + '\u0000' + message.language;
+  var busy = inFlight[scope] || (inFlight[scope] = new Set());
+  var keys = {};
+  Object.keys(message.keys).forEach(function(key) {
+    if (busy.has(key)) return;
+    keys[key] = message.keys[key];
+    busy.add(key);
+  });
+  var request = Object.assign({}, message, { keys: keys });
+
+  function release() {
+    Object.keys(keys).forEach(function(key) { busy.delete(key); });
+    if (busy.size === 0) delete inFlight[scope];
+  }
+
+  if (Object.keys(keys).length === 0) {
+    release();
+    return Promise.resolve({ success: true, translations: {}, cached: 0, translated: 0 });
+  }
+
+  return loadProvider().then(function(resolved) {
+    if (resolved.provider === Providers.SERVER_PROVIDER) {
+      return translateViaServer(request, resolved.baseUrl);
+    }
+    return translateDirect(request, resolved);
+  }).catch(function(error) {
+    return { success: false, error: error.message || 'Translation failed.' };
+  }).then(function(result) {
+    release();
+    return result;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Translation: any-i18n server
+// ---------------------------------------------------------------------------
 
 /**
  * Parse SSE events from a text chunk.
@@ -219,7 +374,6 @@ function parseSSE(text) {
 
   for (var i = 0; i < blocks.length; i++) {
     var block = blocks[i];
-    // Last block may be incomplete (no trailing \n\n)
     if (i === blocks.length - 1 && !text.endsWith('\n\n')) {
       remaining = block;
       break;
@@ -230,11 +384,10 @@ function parseSSE(text) {
     var dataStr = '';
     var lines = block.split('\n');
     for (var j = 0; j < lines.length; j++) {
-      var line = lines[j];
-      if (line.indexOf('event: ') === 0) {
-        eventType = line.substring(7);
-      } else if (line.indexOf('data: ') === 0) {
-        dataStr = line.substring(6);
+      if (lines[j].indexOf('event: ') === 0) {
+        eventType = lines[j].substring(7);
+      } else if (lines[j].indexOf('data: ') === 0) {
+        dataStr = lines[j].substring(6);
       }
     }
     if (dataStr) {
@@ -249,17 +402,10 @@ function parseSSE(text) {
   return { events: events, remaining: remaining };
 }
 
-/**
- * Handle translating keys via the streaming SSE endpoint.
- * Sends partial results to storage as batches arrive.
- */
-function handleTranslateKeysStreaming(message) {
-  var keys = message.keys;
-  var language = message.language;
+function translateViaServerStreaming(message, serverUrl) {
   var domain = message.domain;
+  var language = message.language;
   var source = message.source || 'unknown';
-
-  var serverUrl = TRANSLATION_SERVER_URL;
   var accumulated = {};
   var cachedCount = 0;
   var translatedCount = 0;
@@ -267,7 +413,7 @@ function handleTranslateKeysStreaming(message) {
   return fetch(serverUrl + '/api/translate/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ keys: keys, language: language, domain: domain })
+    body: JSON.stringify({ keys: message.keys, language: language, domain: domain })
   }).then(function(response) {
     if (!response.ok) {
       throw new Error('Server error: ' + response.status);
@@ -278,146 +424,561 @@ function handleTranslateKeysStreaming(message) {
     var buffer = '';
 
     function processEvents(events) {
-      var storePromises = [];
-      for (var i = 0; i < events.length; i++) {
-        var evt = events[i];
-
-        if (evt.event === 'cached' || evt.event === 'batch') {
-          // Merge translations into accumulator
-          var translations = evt.data.translations || {};
-          var tkeys = Object.keys(translations);
-          for (var j = 0; j < tkeys.length; j++) {
-            accumulated[tkeys[j]] = translations[tkeys[j]];
-          }
-
-          if (evt.event === 'cached') {
-            cachedCount = evt.data.cached || 0;
-          } else {
-            translatedCount += Object.keys(translations).length;
-          }
-
-          // Store partial translations and notify UI
-          storePromises.push(
-            storeTranslations(domain, language, accumulated).then(function() {
-              return browser.storage.local.set({
-                _translateResult: {
-                  success: true,
-                  translations: accumulated,
-                  cached: cachedCount,
-                  translated: translatedCount,
-                  partial: true,
-                  source: source
-                }
-              });
-            })
-          );
-        } else if (evt.event === 'error') {
-          // Log but continue — other batches may succeed
+      var writes = [];
+      events.forEach(function(evt) {
+        if (evt.event !== 'cached' && evt.event !== 'batch') return;
+        var translations = evt.data.translations || {};
+        Object.assign(accumulated, translations);
+        if (evt.event === 'cached') {
+          cachedCount = evt.data.cached || 0;
+        } else {
+          translatedCount += Object.keys(translations).length;
         }
-        // 'done' is handled after the read loop
-      }
-      return Promise.all(storePromises);
+        writes.push(storeTranslations(domain, language, translations).then(function() {
+          return publishResult({
+            success: true,
+            translations: accumulated,
+            cached: cachedCount,
+            translated: translatedCount,
+            partial: true,
+            source: source,
+            domain: domain,
+            language: language
+          });
+        }));
+      });
+      return Promise.all(writes);
     }
 
     function read() {
       return reader.read().then(function(result) {
         if (result.done) {
-          // Process any remaining buffer
-          if (buffer.trim()) {
-            var parsed = parseSSE(buffer + '\n\n');
-            return processEvents(parsed.events);
-          }
-          return;
+          return buffer.trim() ? processEvents(parseSSE(buffer + '\n\n').events) : undefined;
         }
-
         buffer += decoder.decode(result.value, { stream: true });
         var parsed = parseSSE(buffer);
         buffer = parsed.remaining;
-
-        return processEvents(parsed.events).then(function() {
-          return read();
-        });
+        return processEvents(parsed.events).then(read);
       });
     }
 
     return read();
   }).then(function() {
-    // Write final result (partial: false)
-    return storeTranslations(domain, language, accumulated).then(function() {
+    return {
+      success: true,
+      translations: accumulated,
+      cached: cachedCount,
+      translated: translatedCount
+    };
+  });
+}
+
+/** Translate through the server; falls back to the non-streaming endpoint. */
+function translateViaServer(message, serverUrl) {
+  return translateViaServerStreaming(message, serverUrl).catch(function() {
+    return fetch(serverUrl + '/api/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keys: message.keys, language: message.language, domain: message.domain })
+    }).then(function(response) {
+      if (!response.ok) {
+        return response.text().then(function(text) {
+          throw new Error('Server error: ' + response.status + ' ' + text);
+        });
+      }
+      return response.json();
+    }).then(function(data) {
+      return storeTranslations(message.domain, message.language, data.translations).then(function() {
+        return {
+          success: true,
+          translations: data.translations,
+          cached: data.cached,
+          translated: data.translated
+        };
+      });
+    });
+  }).catch(function(error) {
+    var reason = error && error.message === 'Failed to fetch'
+      ? t('errorServerUnreachable', [serverUrl], 'Cannot reach the translation server at ' + serverUrl + '.')
+      : (error.message || 'Translation server request failed.');
+    return { success: false, error: reason };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Translation: direct OpenAI-compatible provider
+// ---------------------------------------------------------------------------
+
+/** POST a chat-completions request and return the assistant text. */
+function chat(resolved, messages, timeoutMs, overrides) {
+  var target = overrides || resolved;
+  var controller = new AbortController();
+  var timer = setTimeout(function() { controller.abort(); }, timeoutMs || REQUEST_TIMEOUT_MS);
+  var endpoint = Providers.chatEndpoint(target.baseUrl);
+
+  return fetch(endpoint, {
+    method: 'POST',
+    headers: Providers.authHeaders(target.apiKey),
+    signal: controller.signal,
+    body: JSON.stringify({
+      model: target.model || 'local-model',
+      messages: messages,
+      temperature: 0.2
+    })
+  }).then(function(response) {
+    if (!response.ok) {
+      return response.text().catch(function() { return ''; }).then(function(text) {
+        throw new Error(Providers.describeHttpError(response.status, text));
+      });
+    }
+    return response.json();
+  }).then(Providers.replyContent).catch(function(error) {
+    if (error.name === 'AbortError') {
+      throw new Error(t('errorTimeout', undefined, 'The provider did not answer in time.'));
+    }
+    if (error instanceof TypeError) {
+      throw new Error(t('errorUnreachable', [endpoint],
+        'Cannot reach ' + endpoint + '. Is it running, and does it allow browser requests (CORS)?'));
+    }
+    throw error;
+  }).finally(function() {
+    clearTimeout(timer);
+  });
+}
+
+function translateOne(resolved, text, language) {
+  return chat(resolved, Providers.singleMessages(text, language)).then(function(content) {
+    var cleaned = Providers.cleanContent(content);
+    return cleaned || null;
+  });
+}
+
+/**
+ * Translate one batch. A reply that does not line up is retried once, then every string is
+ * translated on its own. Returns an array aligned with `texts` (null for failures).
+ */
+function translateBatch(resolved, texts, language) {
+  function attempt() {
+    return chat(resolved, Providers.batchMessages(texts, language)).then(function(content) {
+      return Providers.parseBatchReply(content, texts.length);
+    });
+  }
+
+  return attempt().then(function(parsed) {
+    return parsed || attempt();
+  }).then(function(parsed) {
+    if (parsed) return parsed;
+    var results = [];
+    return texts.reduce(function(chain, text) {
+      return chain.then(function() {
+        return translateOne(resolved, text, language)
+          .catch(function() { return null; })
+          .then(function(value) { results.push(value); });
+      });
+    }, Promise.resolve()).then(function() { return results; });
+  });
+}
+
+function translateDirect(message, resolved) {
+  var domain = message.domain;
+  var language = message.language;
+  var source = message.source || 'unknown';
+
+  if (resolved.needsKey && !resolved.apiKey) {
+    return Promise.resolve({
+      success: false,
+      error: t('errorMissingKey', undefined, 'Add an API key for this provider in the settings.')
+    });
+  }
+
+  return getStoredTranslations(domain, language).then(function(existing) {
+    // Strings this site already has a translation for are not sent again.
+    var textToKeys = {};
+    var cached = {};
+    Object.keys(message.keys).forEach(function(key) {
+      if (existing[key]) {
+        cached[key] = existing[key];
+        return;
+      }
+      var text = message.keys[key];
+      if (!text) return;
+      (textToKeys[text] = textToKeys[text] || []).push(key);
+    });
+
+    var texts = Object.keys(textToKeys);
+    var accumulated = Object.assign({}, cached);
+    var cachedCount = Object.keys(cached).length;
+    var translatedCount = 0;
+    var failedCount = 0;
+    var lastError = null;
+
+    if (texts.length === 0) {
+      return { success: true, translations: accumulated, cached: cachedCount, translated: 0 };
+    }
+
+    var queue = Providers.makeBatches(texts, resolved.batchSize);
+    var workerCount = Math.min(resolved.parallel, queue.length);
+
+    function runWorker() {
+      var batch = queue.shift();
+      if (!batch) return Promise.resolve();
+
+      return translateBatch(resolved, batch, language).then(function(results) {
+        var fresh = {};
+        batch.forEach(function(text, index) {
+          var translated = results[index];
+          if (!translated) {
+            failedCount++;
+            return;
+          }
+          textToKeys[text].forEach(function(key) { fresh[key] = translated; });
+          translatedCount++;
+        });
+        Object.assign(accumulated, fresh);
+        return storeTranslations(domain, language, fresh).then(function() {
+          return publishResult({
+            success: true,
+            translations: accumulated,
+            cached: cachedCount,
+            translated: translatedCount,
+            partial: true,
+            source: source,
+            domain: domain,
+            language: language
+          });
+        });
+      }).catch(function(error) {
+        failedCount += batch.length;
+        lastError = error;
+      }).then(runWorker);
+    }
+
+    var workers = [];
+    for (var i = 0; i < workerCount; i++) workers.push(runWorker());
+
+    return Promise.all(workers).then(function() {
+      if (translatedCount === 0 && failedCount > 0) {
+        return {
+          success: false,
+          error: lastError ? lastError.message : t('errorNothingTranslated', undefined, 'Nothing could be translated.')
+        };
+      }
       return {
         success: true,
         translations: accumulated,
         cached: cachedCount,
-        translated: translatedCount
+        translated: translatedCount,
+        failed: failedCount
       };
     });
   });
 }
 
-/**
- * Store translations for a domain/language in browser.storage.local.
- */
-function storeTranslations(domain, language, translations) {
-  return browser.storage.local.get('translations').then(function(stored) {
-    var allTranslations = (stored && stored.translations) || {};
-    if (!allTranslations[domain]) {
-      allTranslations[domain] = {};
+// ---------------------------------------------------------------------------
+// Provider discovery (options page)
+// ---------------------------------------------------------------------------
+
+function fetchJson(url, headers, timeoutMs) {
+  var controller = new AbortController();
+  var timer = setTimeout(function() { controller.abort(); }, timeoutMs || MODELS_TIMEOUT_MS);
+  return fetch(url, { headers: headers, signal: controller.signal }).then(function(response) {
+    if (!response.ok) {
+      var error = new Error(Providers.describeHttpError(response.status, ''));
+      error.status = response.status;
+      throw error;
     }
-    allTranslations[domain][language] = translations;
-    return browser.storage.local.set({ translations: allTranslations });
+    return response.json();
+  }).catch(function(error) {
+    if (error.name === 'AbortError') {
+      throw new Error(t('errorTimeout', undefined, 'The provider did not answer in time.'));
+    }
+    if (error instanceof TypeError) {
+      throw new Error(t('errorUnreachable', [url],
+        'Cannot reach ' + url + '. Is it running, and does it allow browser requests (CORS)?'));
+    }
+    throw error;
+  }).finally(function() {
+    clearTimeout(timer);
   });
 }
 
-/**
- * Handle translating keys via the translation server.
- * Tries the streaming endpoint first, falls back to the non-streaming endpoint.
- */
-function handleTranslateKeys(message) {
-  var keys = message.keys;
-  var language = message.language;
-  var domain = message.domain;
+function listModels(provider, baseUrl, apiKey) {
+  if (provider === Providers.SERVER_PROVIDER) return Promise.resolve([]);
+  var base = String(baseUrl || '').replace(/\/+$/, '');
+  return fetchJson(Providers.modelsEndpoint(base), Providers.authHeaders(apiKey)).then(Providers.modelIds)
+    .catch(function(error) {
+      // Older Ollama builds only expose their native model list.
+      if (provider === 'ollama' && error.status === 404) {
+        return fetchJson(base + '/api/tags', {}).then(Providers.modelIds);
+      }
+      throw error;
+    });
+}
 
-  if (!keys || !language || !domain) {
-    return Promise.resolve({
-      success: false,
-      error: 'Missing keys, language, or domain.'
+function testConnection(provider, baseUrl, apiKey) {
+  if (provider === Providers.SERVER_PROVIDER) {
+    var base = String(baseUrl || '').replace(/\/+$/, '');
+    return fetchJson(base + '/api/health', {}).then(function(body) {
+      return { detail: body && body.backend ? body.backend : '' };
     });
   }
-
-  // Try streaming endpoint first, fall back to non-streaming
-  return handleTranslateKeysStreaming(message).catch(function(streamErr) {
-    // Fallback to non-streaming endpoint
-    var serverUrl = TRANSLATION_SERVER_URL;
-    return fetch(serverUrl + '/api/translate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ keys: keys, language: language, domain: domain })
-    })
-      .then(function(response) {
-        if (!response.ok) {
-          return response.text().then(function(text) {
-            throw new Error('Server error: ' + response.status + ' ' + text);
-          });
-        }
-        return response.json();
-      })
-      .then(function(data) {
-        return storeTranslations(domain, language, data.translations).then(function() {
-          return {
-            success: true,
-            translations: data.translations,
-            cached: data.cached,
-            translated: data.translated
-          };
-        });
-      });
-  }).catch(function(err) {
-    return {
-      success: false,
-      error: err.message || 'Translation server request failed.'
-    };
+  return listModels(provider, baseUrl, apiKey).then(function(models) {
+    return { models: models };
   });
 }
 
-// Index bundled translations on service worker startup
-indexBundledTranslations();
+// ---------------------------------------------------------------------------
+// Context menu
+// ---------------------------------------------------------------------------
+
+function contentScriptFiles() {
+  var scripts = browser.runtime.getManifest().content_scripts || [];
+  return {
+    js: scripts.length ? scripts[0].js : [],
+    css: scripts.length ? (scripts[0].css || []) : []
+  };
+}
+
+/** Send a message to the tab, injecting the content scripts first when they are missing. */
+function sendToTab(tabId, message) {
+  return browser.tabs.sendMessage(tabId, message).catch(function() {
+    var files = contentScriptFiles();
+    var css = files.css.length
+      ? browser.scripting.insertCSS({ target: { tabId: tabId }, files: files.css })
+      : Promise.resolve();
+    return css.then(function() {
+      return browser.scripting.executeScript({ target: { tabId: tabId }, files: files.js });
+    }).then(function() {
+      return browser.tabs.sendMessage(tabId, message);
+    });
+  });
+}
+
+function targetLanguageFor(url) {
+  var domain = '';
+  try {
+    domain = new URL(url).hostname;
+  } catch (e) {
+    domain = '';
+  }
+  return browser.storage.local.get(['autoTranslate', LAST_LANGUAGE_KEY]).then(function(stored) {
+    var auto = (stored.autoTranslate || {})[domain];
+    if (auto && auto.language) return auto.language;
+    if (stored[LAST_LANGUAGE_KEY]) return stored[LAST_LANGUAGE_KEY];
+    return (navigator.language || 'en').split('-')[0];
+  });
+}
+
+if (browser.contextMenus) {
+  browser.contextMenus.onClicked.addListener(function(info, tab) {
+    if (!tab || tab.id === undefined) return;
+
+    if (info.menuItemId === MENU_TRANSLATE_PAGE) {
+      targetLanguageFor(tab.url).then(function(language) {
+        return sendToTab(tab.id, { type: 'TRANSLATE_PAGE', language: language });
+      }).catch(function(error) {
+        console.warn('any-i18n: cannot translate this page', error);
+      });
+    } else if (info.menuItemId === MENU_TRANSLATE_IMAGE && info.srcUrl) {
+      handleImageTranslation(info.srcUrl, tab);
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Image translation: extract text (bundled OCR or a vision model), then translate it
+// ---------------------------------------------------------------------------
+
+function handleImageTranslation(srcUrl, tab) {
+  var language;
+  targetLanguageFor(tab.url).then(function(lang) {
+    language = lang;
+    return sendToTab(tab.id, { type: 'IMAGE_TRANSLATION_STARTED', srcUrl: srcUrl });
+  }).then(function() {
+    return translateImage(srcUrl, language);
+  }).then(function(result) {
+    return browser.tabs.sendMessage(tab.id, Object.assign({ type: 'IMAGE_TRANSLATION_RESULT', srcUrl: srcUrl }, result));
+  }).catch(function(error) {
+    console.error('any-i18n: image translation failed', error);
+    return browser.tabs.sendMessage(tab.id, {
+      type: 'IMAGE_TRANSLATION_RESULT',
+      srcUrl: srcUrl,
+      error: error.message
+    }).catch(function() {});
+  });
+}
+
+function imageCacheKey(srcUrl, language, resolved) {
+  var s = resolved.settings;
+  var extractor = s.ocrMode === Providers.OCR_MODE_VISION ? 'vision:' + s.visionModel : 'ocr:' + s.ocrLanguages;
+  return JSON.stringify([resolved.provider, resolved.model, extractor, language, srcUrl]);
+}
+
+function translateImage(srcUrl, language) {
+  return loadProvider().then(function(resolved) {
+    var cacheKey = imageCacheKey(srcUrl, language, resolved);
+    return browser.storage.local.get(IMAGE_CACHE_KEY).then(function(stored) {
+      var hit = ((stored && stored[IMAGE_CACHE_KEY]) || {})[cacheKey];
+      if (hit) return { extractedText: hit.extractedText, translation: hit.translation, fromCache: true };
+
+      return fetchImageAsDataUrl(srcUrl).then(function(dataUrl) {
+        return extractImageText(dataUrl, resolved.settings);
+      }).then(function(text) {
+        if (!text || text === NO_TEXT_MARKER) return { noText: true };
+        return translateText(resolved, text, language).then(function(translation) {
+          var result = { extractedText: text, translation: translation };
+          storeImageResult(cacheKey, result);
+          return result;
+        });
+      });
+    });
+  });
+}
+
+function storeImageResult(key, result) {
+  return queueStorage(function() {
+    return browser.storage.local.get(IMAGE_CACHE_KEY).then(function(stored) {
+      var cache = (stored && stored[IMAGE_CACHE_KEY]) || {};
+      cache[key] = { extractedText: result.extractedText, translation: result.translation, ts: Date.now() };
+      var keys = Object.keys(cache);
+      if (keys.length > MAX_IMAGE_CACHE_ENTRIES) {
+        keys.sort(function(a, b) { return (cache[a].ts || 0) - (cache[b].ts || 0); });
+        keys.slice(0, keys.length - MAX_IMAGE_CACHE_ENTRIES).forEach(function(stale) { delete cache[stale]; });
+      }
+      return browser.storage.local.set({ [IMAGE_CACHE_KEY]: cache });
+    });
+  });
+}
+
+/** Translate free text (image contents) with the configured provider. */
+function translateText(resolved, text, language) {
+  if (resolved.provider !== Providers.SERVER_PROVIDER) {
+    if (resolved.needsKey && !resolved.apiKey) {
+      return Promise.reject(new Error(t('errorMissingKey', undefined, 'Add an API key for this provider in the settings.')));
+    }
+    return translateOne(resolved, text, language).then(function(value) {
+      if (!value) throw new Error(t('errorNothingTranslated', undefined, 'Nothing could be translated.'));
+      return value;
+    });
+  }
+  return fetch(resolved.baseUrl + '/api/translate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keys: { image_text: text }, language: language, domain: '_images' })
+  }).then(function(response) {
+    if (!response.ok) throw new Error('Server error: ' + response.status);
+    return response.json();
+  }).then(function(data) {
+    var value = data && data.translations && data.translations.image_text;
+    if (!value) throw new Error(t('errorNothingTranslated', undefined, 'Nothing could be translated.'));
+    return value;
+  });
+}
+
+function fetchImageAsDataUrl(srcUrl) {
+  if (srcUrl.indexOf('data:') === 0) return Promise.resolve(srcUrl);
+
+  var controller = new AbortController();
+  var timer = setTimeout(function() { controller.abort(); }, IMAGE_FETCH_TIMEOUT_MS);
+  return fetch(srcUrl, { signal: controller.signal }).then(function(response) {
+    if (!response.ok) throw new Error(t('errorImageFetch', [String(response.status)], 'Could not load the image (HTTP ' + response.status + ').'));
+    return response.blob();
+  }).then(function(blob) {
+    return downscaleImage(blob).catch(function() { return blob; });
+  }).then(blobToDataUrl).catch(function(error) {
+    if (error.name === 'AbortError') throw new Error(t('errorImageTimeout', undefined, 'Loading the image timed out.'));
+    throw error;
+  }).finally(function() {
+    clearTimeout(timer);
+  });
+}
+
+function downscaleImage(blob) {
+  return createImageBitmap(blob).then(function(bitmap) {
+    var scale = Math.min(1, IMAGE_MAX_DIMENSION / Math.max(bitmap.width, bitmap.height));
+    var common = ['image/png', 'image/jpeg', 'image/webp'].indexOf(blob.type) !== -1;
+    if (scale >= 1 && common) {
+      bitmap.close();
+      return blob;
+    }
+    var canvas = new OffscreenCanvas(
+      Math.max(1, Math.round(bitmap.width * scale)),
+      Math.max(1, Math.round(bitmap.height * scale))
+    );
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    return canvas.convertToBlob({ type: 'image/png' });
+  });
+}
+
+function blobToDataUrl(blob) {
+  return blob.arrayBuffer().then(function(buffer) {
+    var bytes = new Uint8Array(buffer);
+    var binary = '';
+    var chunk = 0x8000;
+    for (var i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return 'data:' + (blob.type || 'image/png') + ';base64,' + btoa(binary);
+  });
+}
+
+function extractImageText(dataUrl, settings) {
+  if (settings.ocrMode === Providers.OCR_MODE_VISION) {
+    return extractWithVisionModel(dataUrl, settings);
+  }
+  return extractWithBuiltinOcr(dataUrl, settings.ocrLanguages);
+}
+
+function ensureOffscreenDocument() {
+  if (!browser.offscreen) {
+    return Promise.reject(new Error(t('errorOcrUnsupported', undefined,
+      'The built-in OCR needs Chrome or Edge. Switch image text extraction to a vision model in the settings.')));
+  }
+  return browser.offscreen.hasDocument().then(function(exists) {
+    if (exists) return undefined;
+    return browser.offscreen.createDocument({
+      url: 'offscreen/offscreen.html',
+      reasons: ['WORKERS'],
+      justification: 'Run the bundled Tesseract OCR engine for image translation'
+    });
+  });
+}
+
+function extractWithBuiltinOcr(dataUrl, languages) {
+  return ensureOffscreenDocument().then(function() {
+    return browser.runtime.sendMessage({
+      target: 'offscreen',
+      action: 'ocr',
+      imageDataUrl: dataUrl,
+      languages: languages || 'eng'
+    });
+  }).then(function(response) {
+    if (!response || !response.success) {
+      throw new Error((response && response.error) || 'OCR failed.');
+    }
+    return response.text || NO_TEXT_MARKER;
+  });
+}
+
+function extractWithVisionModel(dataUrl, settings) {
+  var target = {
+    baseUrl: String(settings.visionUrl || '').replace(/\/+$/, ''),
+    model: settings.visionModel,
+    apiKey: settings.visionApiKey
+  };
+  var messages = [{
+    role: 'user',
+    content: [
+      {
+        type: 'text',
+        text: 'Extract all readable text from this image exactly as written, preserving line breaks. ' +
+          'Reply with only the text. If the image contains no readable text, reply with exactly ' + NO_TEXT_MARKER + '.'
+      },
+      { type: 'image_url', image_url: { url: dataUrl } }
+    ]
+  }];
+  return chat(null, messages, VISION_TIMEOUT_MS, target).then(function(content) {
+    return Providers.cleanContent(content);
+  });
+}

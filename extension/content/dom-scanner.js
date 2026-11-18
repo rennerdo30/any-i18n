@@ -39,7 +39,8 @@ var DomScanner = {
 
     while (textWalker.nextNode()) {
       var node = textWalker.currentNode;
-      var originalText = normalizeText(node.textContent);
+      // Nodes we already translated are keyed by their original text, not the translation.
+      var originalText = normalizeText(TextReplacer.originalTextFor(node));
       var key = KeyGenerator.generateKeyForText(originalText, domain);
 
       if (key) {
@@ -77,7 +78,7 @@ var DomScanner = {
 
       for (var a = 0; a < attrs.length; a++) {
         var attrName = attrs[a];
-        var attrValue = el.getAttribute(attrName);
+        var attrValue = TextReplacer.originalAttrFor(el, attrName);
         var normalized = normalizeText(attrValue);
 
         if (isTranslatableText(normalized)) {
@@ -121,6 +122,9 @@ var DomScanner = {
         return true;
       }
       if (parent.getAttribute('translate') === 'no') {
+        return true;
+      }
+      if (parent.isContentEditable) {
         return true;
       }
       parent = parent.parentElement;

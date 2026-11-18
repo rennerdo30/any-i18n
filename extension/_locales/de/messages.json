@@ -1,0 +1,452 @@
+{
+  "extName": {
+    "message": "any-i18n"
+  },
+  "extDescription": {
+    "message": "Übersetzt jede Website direkt auf der Seite mit einem lokalen oder gehosteten KI-Modell und speichert die Übersetzungen als wiederverwendbare Schlüssel."
+  },
+  "menuTranslatePage": {
+    "message": "Seite übersetzen"
+  },
+  "menuTranslateImage": {
+    "message": "Bildtext übersetzen"
+  },
+  "actionClose": {
+    "message": "Schließen"
+  },
+  "labelOriginal": {
+    "message": "Original"
+  },
+  "statusTranslateFailed": {
+    "message": "Übersetzung fehlgeschlagen."
+  },
+  "statusImageTranslating": {
+    "message": "Bild wird gelesen und übersetzt …"
+  },
+  "statusImageFailed": {
+    "message": "Bildübersetzung fehlgeschlagen: $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusImageNoText": {
+    "message": "In diesem Bild wurde kein lesbarer Text gefunden."
+  },
+  "errorImportFormat": {
+    "message": "Ungültige Übersetzungsdatei. Erwartet werden _meta (mit domain und language) und translations."
+  },
+  "errorServerUnreachable": {
+    "message": "Der Übersetzungsserver unter $ARG1$ ist nicht erreichbar.",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTimeout": {
+    "message": "Der Anbieter hat nicht rechtzeitig geantwortet."
+  },
+  "errorUnreachable": {
+    "message": "$ARG1$ ist nicht erreichbar. Läuft der Dienst, und erlaubt er Anfragen aus dem Browser (CORS)?",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorMissingKey": {
+    "message": "Für diesen Anbieter fehlt in den Einstellungen ein API-Schlüssel."
+  },
+  "errorNothingTranslated": {
+    "message": "Es konnte nichts übersetzt werden."
+  },
+  "errorImageFetch": {
+    "message": "Das Bild konnte nicht geladen werden (HTTP $ARG1$).",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorImageTimeout": {
+    "message": "Das Laden des Bildes hat zu lange gedauert."
+  },
+  "errorOcrUnsupported": {
+    "message": "Die integrierte Texterkennung benötigt Chrome oder Edge. Stelle die Bildtexterkennung in den Einstellungen auf ein Vision-Modell um."
+  },
+  "toolbarTitle": {
+    "message": "any-i18n-Leiste"
+  },
+  "toolbarLanguagePlaceholder": {
+    "message": "Sprache (z. B. en)"
+  },
+  "actionTranslate": {
+    "message": "Übersetzen"
+  },
+  "actionRevert": {
+    "message": "Zurücksetzen"
+  },
+  "statusScanning": {
+    "message": "Seite wird gelesen …"
+  },
+  "statusTranslating": {
+    "message": "Wird übersetzt …"
+  },
+  "statusReverted": {
+    "message": "Übersetzung zurückgesetzt."
+  },
+  "errorNoLanguage": {
+    "message": "Bitte zuerst eine Sprache eingeben."
+  },
+  "errorNoText": {
+    "message": "Auf dieser Seite wurde kein übersetzbarer Text gefunden."
+  },
+  "statusProgress": {
+    "message": "Wird übersetzt … bisher $ARG1$ Texte",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusTranslatedCount": {
+    "message": "$ARG1$ Texte übersetzt",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusFromCache": {
+    "message": "$ARG1$ bereits gespeichert",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusFailedCount": {
+    "message": "$ARG1$ fehlgeschlagen",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "autoIndicator": {
+    "message": "Automatisch: $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorApplyFailed": {
+    "message": "Die Übersetzung konnte nicht angewendet werden."
+  },
+  "popupTargetLanguage": {
+    "message": "Zielsprache"
+  },
+  "popupLanguagePlaceholder": {
+    "message": "z. B. en, fr, es …"
+  },
+  "popupAutoTranslate": {
+    "message": "Diese Website automatisch übersetzen"
+  },
+  "actionScan": {
+    "message": "Seite scannen"
+  },
+  "actionApply": {
+    "message": "Anwenden"
+  },
+  "actionExportKeys": {
+    "message": "Exportieren"
+  },
+  "actionImport": {
+    "message": "Importieren"
+  },
+  "popupScannedKeys": {
+    "message": "Gescannte Schlüssel"
+  },
+  "popupNoKeys": {
+    "message": "Noch keine Schlüssel gescannt."
+  },
+  "popupSettings": {
+    "message": "Einstellungen"
+  },
+  "popupProviderVia": {
+    "message": "über $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusScanFound": {
+    "message": "$ARG1$ übersetzbare Texte gefunden.",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusScanFailed": {
+    "message": "Scannen fehlgeschlagen: $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusRevertFailed": {
+    "message": "Zurücksetzen fehlgeschlagen: $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusApplied": {
+    "message": "Übersetzung angewendet ($ARG1$).",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusNoTranslations": {
+    "message": "Für diese Sprache gibt es noch keine Übersetzungen."
+  },
+  "statusApplyFailed": {
+    "message": "Anwenden fehlgeschlagen: $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusExported": {
+    "message": "Schlüssel als _keys.json exportiert"
+  },
+  "statusExportFailed": {
+    "message": "Export fehlgeschlagen: $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusImported": {
+    "message": "Übersetzung importiert."
+  },
+  "statusImportFailed": {
+    "message": "Import fehlgeschlagen: $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorInvalidJson": {
+    "message": "Ungültige JSON-Datei."
+  },
+  "statusAppliedSuffix": {
+    "message": "$ARG1$, angewendet.",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusStoredSuffix": {
+    "message": "$ARG1$, gespeichert. Zum Anzeigen „Anwenden“ klicken.",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorUnknown": {
+    "message": "unbekannter Fehler"
+  },
+  "errorRestrictedPage": {
+    "message": "Diese Seite kann nicht übersetzt werden."
+  },
+  "providerServer": {
+    "message": "any-i18n-Server"
+  },
+  "providerLmstudio": {
+    "message": "LM Studio"
+  },
+  "providerOllama": {
+    "message": "Ollama"
+  },
+  "providerOpenai": {
+    "message": "OpenAI-kompatibel"
+  },
+  "providerDeepseek": {
+    "message": "DeepSeek"
+  },
+  "optionsTitle": {
+    "message": "any-i18n-Einstellungen"
+  },
+  "optionsProviderHeading": {
+    "message": "Übersetzungsanbieter"
+  },
+  "optionsProviderLabel": {
+    "message": "Anbieter"
+  },
+  "optionsProviderHint": {
+    "message": "Lokale Anbieter behalten den Seitentext auf dem eigenen Rechner. Cloud-Anbieter senden ihn an den konfigurierten Dienst."
+  },
+  "optionsUrlLabel": {
+    "message": "Endpunkt-URL"
+  },
+  "optionsUrlHint": {
+    "message": "Für OpenRouter und andere OpenAI-kompatible Dienste „OpenAI-kompatibel“ wählen und deren Basis-URL eintragen, z. B. https://openrouter.ai/api/v1."
+  },
+  "optionsServerHint": {
+    "message": "Den Server mit ./server/start.sh starten. Er bündelt Anfragen, speichert Ergebnisse zwischen und nutzt das in LLM_BACKEND gesetzte Backend."
+  },
+  "optionsModelLabel": {
+    "message": "Modell"
+  },
+  "optionsModelHint": {
+    "message": "Einen Vorschlag wählen oder einen beliebigen Modellnamen eingeben. Leer lassen, um das vom Server geladene Modell zu nutzen."
+  },
+  "actionRefreshModels": {
+    "message": "Modelle laden"
+  },
+  "optionsApiKeyLabel": {
+    "message": "API-Schlüssel"
+  },
+  "optionsApiKeyHint": {
+    "message": "Wird nur in diesem Browserprofil gespeichert und nie synchronisiert."
+  },
+  "actionShow": {
+    "message": "Anzeigen"
+  },
+  "actionHide": {
+    "message": "Verbergen"
+  },
+  "optionsBatchLabel": {
+    "message": "Texte pro Anfrage"
+  },
+  "optionsParallelLabel": {
+    "message": "Parallele Anfragen"
+  },
+  "optionsExecutionHint": {
+    "message": "Lokale Server verarbeiten meist nur eine Anfrage gleichzeitig. Cloud-APIs sind mit mehr parallelen Anfragen schneller."
+  },
+  "actionTestConnection": {
+    "message": "Verbindung testen"
+  },
+  "statusTesting": {
+    "message": "Wird getestet …"
+  },
+  "statusConnected": {
+    "message": "Verbunden."
+  },
+  "statusConnectedModels": {
+    "message": "Verbunden. $ARG1$ Modelle verfügbar.",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusConnectionFailed": {
+    "message": "Verbindung fehlgeschlagen: $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusModelsLoaded": {
+    "message": "$ARG1$ Modelle geladen.",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsImageHeading": {
+    "message": "Bildübersetzung"
+  },
+  "optionsImageHint": {
+    "message": "Rechtsklick auf ein Bild und „Bildtext übersetzen“ wählen. Der Text wird zuerst erkannt und dann vom obigen Anbieter übersetzt."
+  },
+  "optionsOcrBuiltin": {
+    "message": "Integrierte Texterkennung (Tesseract, läuft im Browser)"
+  },
+  "optionsOcrVision": {
+    "message": "Vision-Modell (OpenAI-kompatibler Endpunkt)"
+  },
+  "optionsOcrLanguagesLabel": {
+    "message": "Sprachen der Texterkennung"
+  },
+  "optionsOcrLanguagesHint": {
+    "message": "Tesseract-Codes mit + verbunden, z. B. eng+deu+jpn. Die Sprachdaten werden einmal heruntergeladen und zwischengespeichert."
+  },
+  "optionsVisionUrlLabel": {
+    "message": "URL des Vision-Endpunkts"
+  },
+  "optionsVisionModelLabel": {
+    "message": "Vision-Modell"
+  },
+  "optionsVisionKeyLabel": {
+    "message": "API-Schlüssel für Vision (optional)"
+  },
+  "optionsPageHeading": {
+    "message": "Auf der Seite"
+  },
+  "optionsShowOriginal": {
+    "message": "Originaltext anzeigen, wenn der Mauszeiger über übersetztem Text steht"
+  },
+  "optionsHighlight": {
+    "message": "Übersetzten Text unterstreichen"
+  },
+  "optionsDataHeading": {
+    "message": "Gespeicherte Übersetzungen"
+  },
+  "optionsCacheStats": {
+    "message": "$ARG1$ Texte auf $ARG2$ Websites, $ARG3$ Bildergebnisse",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      },
+      "arg2": {
+        "content": "$2"
+      },
+      "arg3": {
+        "content": "$3"
+      }
+    }
+  },
+  "optionsDataHint": {
+    "message": "Übersetzungen werden pro Website gespeichert und bei jedem Besuch wiederverwendet, sodass nur neuer oder geänderter Text an den Anbieter geht. Mit „Schlüssel exportieren“ und „Importieren“ im Popup lassen sie sich übertragen oder bearbeiten."
+  },
+  "actionClearCache": {
+    "message": "Alle Übersetzungen löschen"
+  },
+  "confirmClearCache": {
+    "message": "Alle gespeicherten Übersetzungen und Bildergebnisse löschen?"
+  },
+  "statusCacheCleared": {
+    "message": "Alle Übersetzungen gelöscht."
+  },
+  "statusSaved": {
+    "message": "Gespeichert"
+  },
+  "errorPermissionDenied": {
+    "message": "Der Browser hat den Zugriff auf $ARG1$ nicht erlaubt.",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  }
+}

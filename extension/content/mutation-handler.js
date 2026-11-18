@@ -38,6 +38,8 @@ var MutationHandler = {
         try {
           callback(mutations);
         } finally {
+          // Drop the records our own replacements produced, so they do not trigger another pass.
+          if (self._observer) self._observer.takeRecords();
           self._processing = false;
         }
       }, 50);

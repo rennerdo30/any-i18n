@@ -16,18 +16,27 @@
 - [x] Build script (Chrome, Firefox, Edge)
 - [x] PNG icons alongside the SVG sources
 - [x] Documentation site (Astro Starlight) + GitHub Pages workflow
+- [x] Direct providers: LM Studio, Ollama, OpenAI-compatible, DeepSeek (merged from chrome-translator-extension)
+- [x] Settings page (provider, endpoint, model, API key, batching, OCR, on-page options)
+- [x] Image translation (bundled Tesseract OCR or vision model) via context menu
+- [x] Context menu: translate page
+- [x] Hover tooltip with the original text; optional underline of translated text
+- [x] Dynamic content translated automatically while a language is active
+- [x] UI localized (English, German); light and dark theme
+- [x] Static checks and unit tests for the provider helpers, CI workflow
 
 ## Next
 - [ ] Make `any-i18n bundle` emit `translations/manifest.json` with the `domains` map and the
       `<domain>/<lang>.json` layout the service worker actually reads
 - [ ] Pin `server/requirements.txt` versions
 - [ ] Replace the deprecated FastAPI `@app.on_event("startup")` with a lifespan handler
-- [ ] Extension settings page (server URL, toolbar toggle) instead of editing constants
-- [ ] Localize the extension UI itself (currently English only)
+- [ ] Toolbar on/off switch on the settings page (currently `TOOLBAR_ENABLED`)
 - [ ] Automated tests: key generation, scanner filtering, replace/revert round-trip, server batching
+- [ ] Stop button for a running translation
+- [ ] Optional cross-site reuse of translations (same sentence on another site)
+- [ ] Verify the Firefox build end to end
 - [ ] Context-aware translation (preserve inline HTML structure around text)
-- [ ] Translation preview mode (highlight translated nodes; `highlightTranslated` is unused)
-- [ ] Keyboard shortcuts and a context-menu action for selective translation
+- [ ] Keyboard shortcuts and translating only the selected text
 - [ ] RTL language support; plural and gender-aware forms
 
 ## Publishing
@@ -37,15 +46,14 @@
 - [ ] npm publish for the CLI
 - [ ] Demo GIF in the README
 - [ ] CONTRIBUTING guide
-- [ ] CI: lint the extension, run the CLI against fixtures
+- [ ] CI: run the CLI against fixtures
 
 ## Known issues
 - `any-i18n bundle` writes `_manifest.json`, which the extension does not read
 - The CLI's `translate` command is hardwired to one provider command, unlike the server
 - The translation server is unauthenticated with permissive CORS and binds `0.0.0.0`
-- `TRANSLATION_SERVER_URL` is duplicated in the content-script constants and the service worker
 - One key per unique string: no per-context translations
-- No automated tests
+- Automated tests cover only `shared/providers.js`
 
 ## Architecture decisions
 | Decision | Rationale |

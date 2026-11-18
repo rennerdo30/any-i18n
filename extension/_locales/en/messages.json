@@ -1,0 +1,452 @@
+{
+  "extName": {
+    "message": "any-i18n"
+  },
+  "extDescription": {
+    "message": "Translate any website in place with a local or hosted AI model, and keep the translations as reusable keys."
+  },
+  "menuTranslatePage": {
+    "message": "Translate page"
+  },
+  "menuTranslateImage": {
+    "message": "Translate image text"
+  },
+  "actionClose": {
+    "message": "Close"
+  },
+  "labelOriginal": {
+    "message": "Original"
+  },
+  "statusTranslateFailed": {
+    "message": "Translation failed."
+  },
+  "statusImageTranslating": {
+    "message": "Reading and translating the image…"
+  },
+  "statusImageFailed": {
+    "message": "Image translation failed: $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusImageNoText": {
+    "message": "No readable text found in this image."
+  },
+  "errorImportFormat": {
+    "message": "Invalid translation file. Expected _meta (with domain and language) and translations."
+  },
+  "errorServerUnreachable": {
+    "message": "Cannot reach the translation server at $ARG1$.",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorTimeout": {
+    "message": "The provider did not answer in time."
+  },
+  "errorUnreachable": {
+    "message": "Cannot reach $ARG1$. Is it running, and does it allow browser requests (CORS)?",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorMissingKey": {
+    "message": "Add an API key for this provider in the settings."
+  },
+  "errorNothingTranslated": {
+    "message": "Nothing could be translated."
+  },
+  "errorImageFetch": {
+    "message": "Could not load the image (HTTP $ARG1$).",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorImageTimeout": {
+    "message": "Loading the image timed out."
+  },
+  "errorOcrUnsupported": {
+    "message": "The built-in OCR needs Chrome or Edge. Switch image text extraction to a vision model in the settings."
+  },
+  "toolbarTitle": {
+    "message": "any-i18n toolbar"
+  },
+  "toolbarLanguagePlaceholder": {
+    "message": "Language (e.g. de)"
+  },
+  "actionTranslate": {
+    "message": "Translate"
+  },
+  "actionRevert": {
+    "message": "Revert"
+  },
+  "statusScanning": {
+    "message": "Scanning…"
+  },
+  "statusTranslating": {
+    "message": "Translating…"
+  },
+  "statusReverted": {
+    "message": "Translation reverted."
+  },
+  "errorNoLanguage": {
+    "message": "Enter a language first."
+  },
+  "errorNoText": {
+    "message": "No translatable text found on this page."
+  },
+  "statusProgress": {
+    "message": "Translating… $ARG1$ strings so far",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusTranslatedCount": {
+    "message": "Translated $ARG1$ strings",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusFromCache": {
+    "message": "$ARG1$ already stored",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusFailedCount": {
+    "message": "$ARG1$ failed",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "autoIndicator": {
+    "message": "Auto: $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorApplyFailed": {
+    "message": "Applying the translation failed."
+  },
+  "popupTargetLanguage": {
+    "message": "Target language"
+  },
+  "popupLanguagePlaceholder": {
+    "message": "e.g. de, fr, es…"
+  },
+  "popupAutoTranslate": {
+    "message": "Auto-translate this site"
+  },
+  "actionScan": {
+    "message": "Scan page"
+  },
+  "actionApply": {
+    "message": "Apply"
+  },
+  "actionExportKeys": {
+    "message": "Export keys"
+  },
+  "actionImport": {
+    "message": "Import"
+  },
+  "popupScannedKeys": {
+    "message": "Scanned keys"
+  },
+  "popupNoKeys": {
+    "message": "No keys scanned yet."
+  },
+  "popupSettings": {
+    "message": "Settings"
+  },
+  "popupProviderVia": {
+    "message": "via $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusScanFound": {
+    "message": "Found $ARG1$ translatable strings.",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusScanFailed": {
+    "message": "Scan failed: $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusRevertFailed": {
+    "message": "Revert failed: $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusApplied": {
+    "message": "Translation applied ($ARG1$).",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusNoTranslations": {
+    "message": "No translations for this language yet."
+  },
+  "statusApplyFailed": {
+    "message": "Apply failed: $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusExported": {
+    "message": "Keys exported as _keys.json"
+  },
+  "statusExportFailed": {
+    "message": "Export failed: $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusImported": {
+    "message": "Translation imported."
+  },
+  "statusImportFailed": {
+    "message": "Import failed: $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorInvalidJson": {
+    "message": "Invalid JSON file."
+  },
+  "statusAppliedSuffix": {
+    "message": "$ARG1$, applied.",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusStoredSuffix": {
+    "message": "$ARG1$, stored. Click Apply to show it.",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "errorUnknown": {
+    "message": "unknown error"
+  },
+  "errorRestrictedPage": {
+    "message": "This page cannot be translated."
+  },
+  "providerServer": {
+    "message": "any-i18n server"
+  },
+  "providerLmstudio": {
+    "message": "LM Studio"
+  },
+  "providerOllama": {
+    "message": "Ollama"
+  },
+  "providerOpenai": {
+    "message": "OpenAI compatible"
+  },
+  "providerDeepseek": {
+    "message": "DeepSeek"
+  },
+  "optionsTitle": {
+    "message": "any-i18n settings"
+  },
+  "optionsProviderHeading": {
+    "message": "Translation provider"
+  },
+  "optionsProviderLabel": {
+    "message": "Provider"
+  },
+  "optionsProviderHint": {
+    "message": "Local providers keep page text on your machine. Cloud providers send it to the service you configure."
+  },
+  "optionsUrlLabel": {
+    "message": "Endpoint URL"
+  },
+  "optionsUrlHint": {
+    "message": "For OpenRouter and other OpenAI-compatible services, choose “OpenAI compatible” and enter their base URL, e.g. https://openrouter.ai/api/v1."
+  },
+  "optionsServerHint": {
+    "message": "Start the server with ./server/start.sh. It batches, caches and uses the backend set in LLM_BACKEND."
+  },
+  "optionsModelLabel": {
+    "message": "Model"
+  },
+  "optionsModelHint": {
+    "message": "Pick a suggestion or type any model name. Leave it empty to use the model the server has loaded."
+  },
+  "actionRefreshModels": {
+    "message": "Load models"
+  },
+  "optionsApiKeyLabel": {
+    "message": "API key"
+  },
+  "optionsApiKeyHint": {
+    "message": "Stored only in this browser profile, never synced."
+  },
+  "actionShow": {
+    "message": "Show"
+  },
+  "actionHide": {
+    "message": "Hide"
+  },
+  "optionsBatchLabel": {
+    "message": "Strings per request"
+  },
+  "optionsParallelLabel": {
+    "message": "Parallel requests"
+  },
+  "optionsExecutionHint": {
+    "message": "Local servers usually handle one request at a time. Cloud APIs are faster with more parallel requests."
+  },
+  "actionTestConnection": {
+    "message": "Test connection"
+  },
+  "statusTesting": {
+    "message": "Testing…"
+  },
+  "statusConnected": {
+    "message": "Connected."
+  },
+  "statusConnectedModels": {
+    "message": "Connected. $ARG1$ models available.",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusConnectionFailed": {
+    "message": "Connection failed: $ARG1$",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "statusModelsLoaded": {
+    "message": "$ARG1$ models loaded.",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  },
+  "optionsImageHeading": {
+    "message": "Image translation"
+  },
+  "optionsImageHint": {
+    "message": "Right-click an image and choose “Translate image text”. The text is extracted first, then translated by the provider above."
+  },
+  "optionsOcrBuiltin": {
+    "message": "Built-in OCR (Tesseract, runs in the browser)"
+  },
+  "optionsOcrVision": {
+    "message": "Vision model (OpenAI-compatible endpoint)"
+  },
+  "optionsOcrLanguagesLabel": {
+    "message": "OCR languages"
+  },
+  "optionsOcrLanguagesHint": {
+    "message": "Tesseract codes joined with +, e.g. eng+deu+jpn. Language data is downloaded once and cached."
+  },
+  "optionsVisionUrlLabel": {
+    "message": "Vision endpoint URL"
+  },
+  "optionsVisionModelLabel": {
+    "message": "Vision model"
+  },
+  "optionsVisionKeyLabel": {
+    "message": "Vision API key (optional)"
+  },
+  "optionsPageHeading": {
+    "message": "On the page"
+  },
+  "optionsShowOriginal": {
+    "message": "Show the original text when hovering translated text"
+  },
+  "optionsHighlight": {
+    "message": "Underline translated text"
+  },
+  "optionsDataHeading": {
+    "message": "Stored translations"
+  },
+  "optionsCacheStats": {
+    "message": "$ARG1$ strings on $ARG2$ sites, $ARG3$ image results",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      },
+      "arg2": {
+        "content": "$2"
+      },
+      "arg3": {
+        "content": "$3"
+      }
+    }
+  },
+  "optionsDataHint": {
+    "message": "Translations are stored per site and reused on every visit, so only new or changed text is sent to the provider. Use Export keys and Import in the popup to move or edit them."
+  },
+  "actionClearCache": {
+    "message": "Delete all translations"
+  },
+  "confirmClearCache": {
+    "message": "Delete all stored translations and image results?"
+  },
+  "statusCacheCleared": {
+    "message": "All translations deleted."
+  },
+  "statusSaved": {
+    "message": "Saved"
+  },
+  "errorPermissionDenied": {
+    "message": "The browser did not allow access to $ARG1$.",
+    "placeholders": {
+      "arg1": {
+        "content": "$1"
+      }
+    }
+  }
+}

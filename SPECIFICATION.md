@@ -7,34 +7,68 @@ in the [documentation site](https://rennerdo30.github.io/any-i18n/) (source in `
 
 any-i18n adds multilanguage i18n support to any website at runtime. A Manifest V3 browser extension
 scans pages for translatable text and attributes, generates deterministic keys, obtains translations
-(from a local FastAPI server, from the CLI, or by import), and replaces the content in place with
-full revert support.
+(directly from an OpenAI-compatible model, from the optional FastAPI server, from the CLI, or by
+import), and replaces the content in place with full revert support.
 
 ## Components
 
 ### Browser extension (`extension/`)
 
-- WebExtensions API + Manifest V3, targeting Chrome, Edge, and Firefox 109+
+- WebExtensions API + Manifest V3, targeting Chrome and Edge 116+ and Firefox 128+ (no built-in OCR)
 - No bundler: content scripts are plain JS files loaded in order by `manifest.json` and share one
   global scope, so top-level declarations use `var`
 - Browser shim: `if (typeof browser === 'undefined') var browser = chrome;`
 - Content scripts scan the DOM via `TreeWalker`, replace text and attributes, and observe mutations
-- The background service worker calls the translation server, imports translation files, and indexes
-  bundled translations into `browser.storage.local`
+- The background service worker translates keys (directly against an OpenAI-compatible provider, or
+  through the server's SSE stream), imports translation files, indexes bundled translations into
+  `browser.storage.local`, owns the context menu and runs image translation
+- `shared/providers.js` holds the pure provider helpers (endpoint URLs, prompts, reply parsing,
+  batching, settings resolution); it is loaded by the service worker, the options page and the tests
 - The popup provides language selection, scan/translate/apply/revert, auto-translate, import/export,
-  and a key viewer
-- A floating in-page toolbar (closed shadow root) offers the same core actions without the popup
+  a key viewer and the active provider
+- The options page edits `providerSettings` (provider, endpoints, models, keys, batching, OCR,
+  on-page behaviour)
+- A floating in-page toolbar (closed shadow root) offers the same core actions without the popup;
+  `content/page-ui.js` renders the original-text tooltip, image overlays and notices in a second
+  closed shadow root
+- An offscreen document (`offscreen/`) hosts the vendored Tesseract.js for the built-in OCR
+- UI strings come from `_locales/{en,de}/messages.json`
 
-Permissions: `storage`, `activeTab`, `scripting`, and `host_permissions` for
-`http://localhost:39418/*`. Content scripts match `<all_urls>` at `document_idle`.
+Permissions: `storage`, `activeTab`, `scripting`, `contextMenus`, `offscreen`; `host_permissions`
+for `http://localhost/*`, `http://127.0.0.1/*` and `https://*/*`; optional `http://*/*` for plain-HTTP
+providers on other hosts. Content scripts match `http://*/*` and `https://*/*` at `document_idle`.
 
 Content script load order (from `manifest.json`):
 
 ```
 shared/constants.js, shared/utils.js, shared/storage.js,
 content/key-generator.js, content/dom-scanner.js, content/text-replacer.js,
-content/mutation-handler.js, content/content-script.js, content/toolbar.js
+content/mutation-handler.js, content/page-ui.js, content/content-script.js, content/toolbar.js
 ```
+
+### Direct provider translation
+
+- Keys already stored for the domain and language are reported as `cached` and not sent
+- The remaining keys are de-duplicated by text and split by count (`batchSize`, per provider) and by
+  size (`MAX_BATCH_CHARS`, 6,000 characters)
+- Each batch is one chat-completions request: the system prompt names the target language (codes are
+  converted with `Intl.DisplayNames`) and demands a JSON array of exactly N strings; the user message
+  is the JSON array of source strings
+- `parseBatchReply` strips `<think>` blocks and code fences, extracts the outermost array and rejects
+  it unless it has exactly N string (or number) items
+- A rejected reply is retried once; then each string is translated with a single-string prompt;
+  strings that still fail are counted as `failed`
+- Up to `parallel` batches run concurrently; every finished batch is merged into storage and
+  published as a partial `_translateResult`
+- Keys currently in flight for a domain and language are removed from later requests
+
+### Image translation
+
+Context menu → service worker fetches the image (15 s timeout), downscales it to at most 1,600 px,
+extracts text with the offscreen Tesseract worker (`ocrLanguages`) or a vision model, translates the
+text with the active provider and sends the result to the content script, which shows it below the
+image. Results are cached in `imageCache` (newest 200), keyed by provider, model, extractor,
+language and image URL.
 
 ### Translation server (`server/`)
 
@@ -56,8 +90,13 @@ content/mutation-handler.js, content/content-script.js, content/toolbar.js
 ### Build system (`scripts/build.js`)
 
 Clears `dist/`, copies `extension/` to `dist/<browser>/` for `chrome`, `firefox`, and `edge`, and
-patches the Firefox manifest with `browser_specific_settings.gecko`
-(`id: any-i18n@extension`, `strict_min_version: 109.0`).
+patches the Firefox manifest: `browser_specific_settings.gecko` (`id: any-i18n@extension`,
+`strict_min_version: 128.0`), `background.scripts` instead of a service worker, no `offscreen`
+permission, and no `offscreen/` or `vendor/` directories.
+
+`scripts/check.js` verifies that every script parses, every manifest path exists and every message
+key used in code exists in both locales. `tests/` holds `node --test` unit tests for
+`shared/providers.js`.
 
 ## Project structure
 
@@ -69,6 +108,7 @@ any-i18n/
 ├── package.json
 ├── extension/
 │   ├── manifest.json
+│   ├── _locales/{en,de}/messages.json
 │   ├── icons/
 │   ├── background/service-worker.js
 │   ├── content/
@@ -76,17 +116,22 @@ any-i18n/
 │   │   ├── key-generator.js
 │   │   ├── text-replacer.js
 │   │   ├── mutation-handler.js
+│   │   ├── page-ui.js
 │   │   ├── content-script.js
 │   │   └── toolbar.js
+│   ├── offscreen/offscreen.{html,js}
+│   ├── options/options.{html,js,css}
 │   ├── popup/
 │   │   ├── popup.html
 │   │   ├── popup.js
-│   │   ├── popup.css
-│   │   └── browser-shim.js
+│   │   └── popup.css
 │   ├── shared/
 │   │   ├── constants.js
 │   │   ├── utils.js
-│   │   └── storage.js
+│   │   ├── storage.js
+│   │   ├── providers.js
+│   │   └── i18n.js
+│   ├── vendor/tesseract/
 │   └── translations/manifest.json
 ├── server/
 │   ├── main.py
@@ -103,7 +148,8 @@ any-i18n/
 │       ├── translate.js
 │       ├── validate.js
 │       └── bundle.js
-├── scripts/build.js
+├── scripts/build.js, scripts/check.js
+├── tests/providers.test.mjs
 └── docs/                (Astro Starlight documentation site)
 ```
 
@@ -125,8 +171,10 @@ Example: `"Welcome to our website"` → `welcome_to_our_<hash>`
 Two `TreeWalker` passes over `document.body`.
 
 **Pass 1 — text nodes** (`NodeFilter.SHOW_TEXT`). Rejected when any ancestor is in `SKIP_TAGS`
-(`SCRIPT`, `STYLE`, `NOSCRIPT`, `IFRAME`, `SVG`, `META`, `LINK`, `HEAD`, `TITLE`) or carries
-`translate="no"`, or when the normalized text is not translatable.
+(`SCRIPT`, `STYLE`, `NOSCRIPT`, `IFRAME`, `SVG`, `META`, `LINK`, `HEAD`, `TITLE`, `TEXTAREA`),
+carries `translate="no"` or is editable, or when the normalized text is not translatable. A node the
+extension translated is keyed by its original text (`TextReplacer.originalTextFor`), so rescans of a
+translated page produce the same keys.
 
 **Pass 2 — attributes** (`NodeFilter.SHOW_ELEMENT`):
 
@@ -156,7 +204,9 @@ Each collected entry is `{ node, originalText, key }`, plus `attr` for attribute
 ## SPA support
 
 - `MutationObserver` on `document.body` for `childList`, `subtree`, and `characterData`, debounced
-  50 ms, with a `_processing` guard so self-inflicted mutations are ignored
+  50 ms; records produced by the extension's own replacements are dropped with `takeRecords()`
+- While a language is active, keys found by the observer that have no translation are requested
+  after `DYNAMIC_TRANSLATE_DELAY_MS` (800 ms), each key once per page and language
 - `history.pushState` and `history.replaceState` are wrapped; `popstate` and `hashchange` are
   observed
 - On URL change: reset state, wait 200 ms for the new view, then re-apply the previous language for
@@ -165,19 +215,24 @@ Each collected entry is `{ node, originalText, key }`, plus `attr` for attribute
 ## Long-running translation results
 
 An LLM batch can outlive the extension message port. The service worker answers `{ started: true }`
-immediately and publishes progress by writing `_translateResult` to `browser.storage.local`; popup
-and content script listen on `browser.storage.onChanged`. Streaming batches carry `partial: true` and
-are applied progressively; the final write clears the flag.
+immediately and publishes progress by writing `_translateResult` to `browser.storage.local`; popup,
+toolbar and content script listen on `browser.storage.onChanged` and act on their own `source`
+(`popup`, `toolbar`, or `auto`/`page` for the content script) and, where set, on matching `domain`.
+Partial results carry `partial: true` and are applied progressively; the final write clears the
+flag. Translations are always merged into storage, never replaced.
 
 ## Storage layout
 
 | Key | Shape |
 | --- | --- |
-| `settings` | `{ enabled, autoScan, highlightTranslated }` |
+| `settings` | `{ enabled, autoScan }` |
+| `providerSettings` | `{ provider, urls, models, apiKeys, batchSize, parallel, ocrMode, ocrLanguages, visionUrl, visionModel, visionApiKey, showOriginalOnHover, highlightTranslated }` |
+| `lastLanguage` | language string |
+| `imageCache` | `{ key: { extractedText, translation, ts } }` |
 | `translations` | `{ domain: { language: { key: text } } }` |
 | `domainKeys` | `{ domain: { key: sourceText } }` |
 | `autoTranslate` | `{ domain: { language, enabled } }` |
-| `_translateResult` | `{ success, translations, cached, translated, partial, source, error? }` |
+| `_translateResult` | `{ success, translations, cached, translated, failed?, partial, source, domain, language, error? }` |
 
 ## File formats
 
@@ -274,10 +329,10 @@ Server environment variables (`server/config.py`): `LLM_BACKEND`, `OPENAI_API_KE
 `ANTHROPIC_API_KEY`, `OPENAI_MODEL`, `ANTHROPIC_MODEL`, `DB_PATH`, `BATCH_SIZE`, `MAX_PARALLEL`,
 `SERVER_PORT`. Keys are read from the environment only; nothing is persisted.
 
-Extension constants (`extension/shared/constants.js`): `TRANSLATION_SERVER_URL`, `TOOLBAR_ENABLED`,
-`MIN_TEXT_LENGTH`, `SKIP_TAGS`, `TRANSLATABLE_INPUT_TYPES`, `DEFAULT_SETTINGS`, `STORAGE_KEYS`,
-`MESSAGES`. `TRANSLATION_SERVER_URL` is duplicated in `background/service-worker.js` (separate
-scope), and the host also appears in `manifest.json` `host_permissions`.
+Extension constants (`extension/shared/constants.js`): `TOOLBAR_ENABLED`, `MIN_TEXT_LENGTH`,
+`SKIP_TAGS`, `TRANSLATABLE_INPUT_TYPES`, `DEFAULT_SETTINGS`, `STORAGE_KEYS`, `MESSAGES`,
+`PROVIDER_SETTINGS_KEY`, `DYNAMIC_TRANSLATE_DELAY_MS`, `HOVER_DELAY_MS`. Provider defaults and limits
+live in `shared/providers.js`; user choices are stored in `providerSettings`.
 
 ## Security considerations
 
@@ -285,7 +340,10 @@ scope), and the host also appears in `manifest.json` `host_permissions`.
   and `setAttribute` only
 - Translation files are JSON only and are validated before import
 - All SQL uses parameterized statements
-- The extension's only network destination is the configured translation server
+- The extension's network destinations are the configured provider (or translation server), the
+  pages' own images (image translation) and the tessdata CDN (OCR language data, built-in OCR only)
+- API keys are stored in `browser.storage.local`, never in `storage.sync`, and are sent only to the
+  endpoint they belong to
 - The server enables permissive CORS and binds `0.0.0.0` with no authentication — it is designed for
   localhost use and must not be exposed to untrusted networks as-is
 - Page text is sent to whichever provider the server is configured to use; do not point it at
